@@ -1,13 +1,6 @@
-use intrusive_collections::intrusive_adapter;
-use intrusive_collections::{LinkedList, LinkedListLink};
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::convert::TryInto;
+use std::collections::{BTreeSet, HashSet};
 use std::fs::File;
-use std::io::{self, BufRead, Empty};
-use std::iter::FromIterator;
-use std::rc::Rc;
-use typenum::consts::U9;
+use std::io::{self, BufRead};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Addr {
@@ -20,14 +13,12 @@ impl Addr {
     }
     pub fn get_h(&self) -> Vec<Addr> {
         (0..self.x)
-            .into_iter()
             .chain((self.x + 1)..9)
             .map(|x| Addr::new(x, self.y))
             .collect()
     }
     pub fn get_v(&self) -> Vec<Addr> {
         (0..self.y)
-            .into_iter()
             .chain((self.y + 1)..9)
             .map(|y| Addr::new(self.x, y))
             .collect()
@@ -111,14 +102,14 @@ impl Board {
         let f = &mut self.fields[edit.addr.y][edit.addr.x];
         assert!(*f == Field::Empty);
         assert!(edit.num < 9);
-        *f = Field::Set(edit.num as u8);
+        *f = Field::Set(edit.num);
     }
     pub fn rollback(&mut self, edit: Edit) {
         let f = &mut self.fields[edit.addr.y][edit.addr.x];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty
     }
-    pub fn candidates_for(&self, addr: Addr) -> HashSet<u8> {
+    pub fn candidates_for(&self, addr: Addr) -> BTreeSet<u8> {
         if self.fields[addr.y][addr.x] != Field::Empty {
             return Default::default();
         }
@@ -141,14 +132,13 @@ impl Board {
         let p: HashSet<u8> = addr
             .get_h()
             .into_iter()
-            .chain(addr.get_v().into_iter())
-            .chain(addr.get_b().into_iter())
+            .chain(addr.get_v())
+            .chain(addr.get_b())
             .filter_map(|Addr { x, y }| match self.fields[y][x] {
                 Field::Empty => None,
                 Field::Set(num) => Some(num),
             })
-            .collect::<HashSet<_>>()
-            .into();
+            .collect();
 
         r.difference(&p).cloned().collect()
     }
@@ -182,7 +172,7 @@ impl Board {
             }
         }
         // self.print();
-        return Some(Vec::new());
+        Some(Vec::new())
     }
     pub fn print(&self) {
         for y in 0..8 {
@@ -207,7 +197,7 @@ fn main() {
     // v_list.cursor_mut().insert_after(f.clone());
     // b_list.cursor_mut().insert_after(f.clone());
 
-    let file = File::open("top95.txt").unwrap();
+    let file = File::open("hardest.txt").unwrap();
     for line in io::BufReader::new(file).lines() {
         let line = line.unwrap();
         let mut board = Board::from_line(&line[..]);

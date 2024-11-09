@@ -97,7 +97,7 @@ impl Board {
         }))
     }
 
-    pub fn init(&mut self, mut line: &str) {
+    pub fn init(&mut self, line: &str) {
         //let mut line = line;
         let mut line = line.chars();
         for i in 0..9 {
@@ -110,10 +110,7 @@ impl Board {
                         panic!("bad num in input: {}", num);
                     }
                     let num = num - 1;
-                    if !self.geth(j).contains(num)
-                        || !self.getv(i).contains(num)
-                        || !self.getb(j, i).contains(num)
-                    {}
+                    if !(!self.geth(j).contains(num) || !self.getv(i).contains(num)) { !self.getb(j, i).contains(num); }
 
                     self.manipulate(j, i, num);
                 } else {
