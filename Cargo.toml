@@ -7,12 +7,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-intrusive-collections = "^0"
-typenum = "^1"
-bit-set = "0.8.0"
 bit-vec = "0.8.0"
 fixedbitset = "0.5.7"
 bitset-core = "0.1.1"
 
 [profile.release]
 debug=true
+# codegen-units = 1
+# lto = "fat"
+
+
+# [build]
+# rustflags = ["-C", "target-cpu=native"]

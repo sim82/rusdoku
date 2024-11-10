@@ -1,5 +1,5 @@
 use bitset_core::BitSet;
-use std::collections::{BTreeSet, HashSet};
+use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
@@ -46,10 +46,9 @@ struct Edit {
     addr: Addr,
     num: u8,
 }
-impl Edit {}
 impl Board {
     pub fn from_line(line: &str) -> Board {
-        let mut board = Board::default(); //let mut line = line;
+        let mut board = Board::default();
         let mut line = line.chars();
         for i in 0..9 {
             for j in 0..9 {
@@ -77,23 +76,51 @@ impl Board {
         board
     }
 
+    const USE_UNSAFE: bool = false;
     fn get_h_mut(&mut self, addr: Addr) -> &mut u16 {
-        &mut self.h_free[addr.y]
+        if !Self::USE_UNSAFE {
+            &mut self.h_free[addr.y]
+        } else {
+            unsafe { self.h_free.get_unchecked_mut(addr.y) }
+        }
     }
     fn get_v_mut(&mut self, addr: Addr) -> &mut u16 {
-        &mut self.v_free[addr.x]
+        if !Self::USE_UNSAFE {
+            &mut self.v_free[addr.x]
+        } else {
+            unsafe { self.v_free.get_unchecked_mut(addr.x) }
+        }
     }
     fn get_b_mut(&mut self, addr: Addr) -> &mut u16 {
-        &mut self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+        if !Self::USE_UNSAFE {
+            &mut self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+        } else {
+            unsafe {
+                self.b_free
+                    .get_unchecked_mut((addr.y / 3) * 3 + (addr.x / 3))
+            }
+        }
     }
-    fn get_h(&self, addr: Addr) -> &u16 {
-        &self.h_free[addr.y]
+    fn get_h(&self, addr: Addr) -> u16 {
+        if !Self::USE_UNSAFE {
+            self.h_free[addr.y]
+        } else {
+            unsafe { *self.h_free.get_unchecked(addr.y) }
+        }
     }
-    fn get_v(&self, addr: Addr) -> &u16 {
-        &self.v_free[addr.x]
+    fn get_v(&self, addr: Addr) -> u16 {
+        if !Self::USE_UNSAFE {
+            self.v_free[addr.x]
+        } else {
+            unsafe { *self.v_free.get_unchecked(addr.x) }
+        }
     }
-    fn get_b(&self, addr: Addr) -> &u16 {
-        &self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+    fn get_b(&self, addr: Addr) -> u16 {
+        if !Self::USE_UNSAFE {
+            self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+        } else {
+            unsafe { *self.b_free.get_unchecked((addr.y / 3) * 3 + (addr.x / 3)) }
+        }
     }
     pub fn manipulate(&mut self, addr: Addr, num: usize) -> Edit {
         assert!(num < 9);
@@ -102,17 +129,13 @@ impl Board {
         self.get_v_mut(addr).bit_reset(num);
         self.get_b_mut(addr).bit_reset(num);
 
-        let edit = Edit {
-            addr,
-            num: num as u8,
-        };
-
         let f = &mut self.fields[addr.y][addr.x];
         assert_eq!(*f, Field::Empty);
         *f = Field::Set(num as u8);
-        // let res = self.open.remove(&addr);
-        // assert!(res);
-        edit
+        Edit {
+            addr,
+            num: num as u8,
+        }
     }
     pub fn rollback(&mut self, edit: Edit) {
         self.get_h_mut(edit.addr).bit_set(edit.num as usize);
@@ -121,42 +144,37 @@ impl Board {
         let f = &mut self.fields[edit.addr.y][edit.addr.x];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty;
-        // self.open.insert(edit.addr);
     }
     pub fn candidates_for(&self, addr: Addr) -> u16 {
-        let mut bs = *self.get_h(addr);
-        bs.bit_and(self.get_v(addr));
-        bs.bit_and(self.get_b(addr));
-
-        bs
+        self.get_h(addr) & self.get_v(addr) & self.get_b(addr)
     }
     pub fn solve(&mut self) -> Option<Vec<Edit>> {
+        let mut min_candidates = 0u16;
         let mut min_i = usize::MAX;
-        let mut min = u32::MAX;
-        for (i, field) in self.open.iter().enumerate() {
-            let num = self.candidates_for(*field).count_ones();
-            if num < min {
-                min_i = i;
-                min = num;
+        {
+            let mut min = u32::MAX;
+            for (i, field) in self.open.iter().enumerate() {
+                let candidates = self.candidates_for(*field);
+                let num = candidates.count_ones();
+                if num < min {
+                    min_i = i;
+                    min = num;
+                    min_candidates = candidates;
+                }
+                if min == 1 {
+                    break;
+                }
             }
-            if min == 1 {
-                break;
+            if min_i == usize::MAX {
+                return Some(Vec::new());
             }
-        }
-        if min_i == usize::MAX {
-            return Some(Vec::new());
         }
         let Addr { x, y } = self.open[min_i];
         self.open.swap_remove(min_i);
-        // println!("try: {x} {y}");
-        let candidates = self.candidates_for(Addr::new(x, y));
-        // println!("c: {:0b}", candidates);
-        // for c in candidates {
         for c in 0..9 {
-            if !candidates.bit_test(c) {
+            if !min_candidates.bit_test(c) {
                 continue;
             }
-            // println!("c: {}", c);
             let edit = self.manipulate(Addr::new(x, y), c.into());
             match self.solve() {
                 Some(mut edits) => {
@@ -168,16 +186,10 @@ impl Board {
                     self.rollback(edit.clone());
                 }
             }
-            // if self.solve() {
-            // return true;
-            // } else {
-            // self.rollback(edit);
-            // }
         }
         self.open.push(Addr::new(x, y));
         None
     }
-    // self.print();
     pub fn print(&self) {
         for y in 0..9 {
             for x in 0..9 {
@@ -192,16 +204,16 @@ impl Board {
 }
 
 fn main() {
-    // let mut h_list = ListH::default();
-    // let mut v_list = ListV::default();
-    // let mut b_list = ListB::default();
+    let args = args();
+    if args.len() != 2 {
+        println!("missing filename");
+        return;
+    }
 
-    // let mut f = Field::new_rc(0, 0);
-    // h_list.cursor_mut().insert_after(f.clone());
-    // v_list.cursor_mut().insert_after(f.clone());
-    // b_list.cursor_mut().insert_after(f.clone());
+    let filename = args.last().unwrap();
 
-    let file = File::open("top95.txt").unwrap();
+    println!("{filename}");
+    let file = File::open(filename).unwrap();
     for line in io::BufReader::new(file).lines() {
         let line = line.unwrap();
         let mut board = Board::from_line(&line[..]);
@@ -216,10 +228,6 @@ fn main() {
             }
             None => println!("unsolvable"),
         }
-        // println!("solved: {}", solved);
-        // let line = line.unwrap();
-        // board.borrow_mut().init(&line[..]);
-        // println!("{:?}", board.borrow().v_free[0]);
     }
     println!("end");
 }
