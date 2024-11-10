@@ -22,7 +22,8 @@ enum Field {
 }
 impl Field {}
 struct Board {
-    open: BTreeSet<Addr>,
+    // open: BTreeSet<Addr>,
+    open: Vec<Addr>,
     fields: [[Field; 9]; 9],
     h_free: [BitVec; 9],
     v_free: [BitVec; 9],
@@ -63,8 +64,12 @@ impl Board {
                     let num = num - 1;
 
                     let addr = Addr::new(j, i);
-                    let res = board.open.remove(&addr);
-                    assert!(res);
+                    for i in 0..board.open.len() {
+                        if board.open[i] == addr {
+                            board.open.remove(i);
+                            break;
+                        }
+                    }
 
                     board.manipulate(addr, num);
                 }
@@ -127,9 +132,23 @@ impl Board {
         bs
     }
     pub fn solve(&mut self) -> Option<Vec<Edit>> {
-        let Some(Addr { x, y }) = self.open.pop_first() else {
+        let mut min_i = usize::MAX;
+        let mut min = u64::MAX;
+        for (i, field) in self.open.iter().enumerate() {
+            let num = self.candidates_for(*field).count_ones();
+            if num < min {
+                min_i = i;
+                min = num;
+            }
+            if min == 1 {
+                break;
+            }
+        }
+        if min_i == usize::MAX {
             return Some(Vec::new());
-        };
+        }
+        let Addr { x, y } = self.open[min_i];
+        self.open.swap_remove(min_i);
         // println!("try: {x} {y}");
         let candidates = self.candidates_for(Addr::new(x, y));
         // for c in candidates {
@@ -155,7 +174,7 @@ impl Board {
             // self.rollback(edit);
             // }
         }
-        self.open.insert(Addr::new(x, y));
+        self.open.push(Addr::new(x, y));
         None
     }
     // self.print();
@@ -182,7 +201,7 @@ fn main() {
     // v_list.cursor_mut().insert_after(f.clone());
     // b_list.cursor_mut().insert_after(f.clone());
 
-    let file = File::open("hardest.txt").unwrap();
+    let file = File::open("top95.txt").unwrap();
     for line in io::BufReader::new(file).lines() {
         let line = line.unwrap();
         let mut board = Board::from_line(&line[..]);
