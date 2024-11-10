@@ -8,10 +8,11 @@ edition = "2021"
 
 [dependencies]
 intrusive-collections = "^0"
-fixed-bitset = "^0"
 typenum = "^1"
 bit-set = "0.8.0"
 bit-vec = "0.8.0"
+fixedbitset = "0.5.7"
+bitset-core = "0.1.1"
 
 [profile.release]
 debug=true
