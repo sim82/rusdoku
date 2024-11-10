@@ -1,3 +1,5 @@
+use bit_set::BitSet;
+use bit_vec::BitVec;
 use std::collections::{BTreeSet, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -109,7 +111,7 @@ impl Board {
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty
     }
-    pub fn candidates_for(&self, addr: Addr) -> BTreeSet<u8> {
+    pub fn candidates_for(&self, addr: Addr) -> BitVec {
         if self.fields[addr.y][addr.x] != Field::Empty {
             return Default::default();
         }
@@ -128,19 +130,37 @@ impl Board {
         //         Field::Set(num) => Some(num),
         //     });
         // h.chain(v).chain(b).collect::<HashSet<_>>().into()
-        let r: HashSet<u8> = [0, 1, 2, 3, 4, 5, 6, 7, 8].into();
-        let p: HashSet<u8> = addr
+
+        let mut bv = BitVec::from_elem(9, true);
+        // let mut bs = BitSet::new();
+        // bs.i
+        for Addr { x, y } in addr
             .get_h()
             .into_iter()
             .chain(addr.get_v())
             .chain(addr.get_b())
-            .filter_map(|Addr { x, y }| match self.fields[y][x] {
-                Field::Empty => None,
-                Field::Set(num) => Some(num),
-            })
-            .collect();
-
-        r.difference(&p).cloned().collect()
+        {
+            match self.fields[y][x] {
+                Field::Empty => (),
+                Field::Set(num) => {
+                    bv.set(num as usize, false);
+                }
+            }
+            //
+        }
+        bv
+        // let r: HashSet<u8> = [0, 1, 2, 3, 4, 5, 6, 7, 8].into();
+        // let p: HashSet<u8> = addr
+        //     .get_h()
+        //     .into_iter()
+        //     .chain(addr.get_v())
+        //     .chain(addr.get_b())
+        //     .filter_map(|Addr { x, y }| match self.fields[y][x] {
+        //         Field::Empty => None,
+        //         Field::Set(num) => Some(num),
+        //     })
+        //     .collect();
+        // r.difference(&p).cloned().collect()
     }
     pub fn solve(&mut self) -> Option<Vec<Edit>> {
         for y in 0..8 {
@@ -150,8 +170,13 @@ impl Board {
                 }
                 // println!("try: {x} {y}");
                 let candidates = self.candidates_for(Addr::new(x, y));
-                for c in candidates {
-                    let edit = self.manipulate(Addr::new(x, y), c as usize);
+                // for c in candidates {
+                for c in 0..9 {
+                    if candidates.get(c) != Some(true) {
+                        continue;
+                    }
+                    // println!("c: {}", c);
+                    let edit = self.manipulate(Addr::new(x, y), c.into());
                     match self.solve() {
                         Some(mut edits) => {
                             self.rollback(edit.clone());
@@ -367,14 +392,23 @@ mod test {
         board.manipulate(Addr::new(5, 0), 5);
         board.manipulate(Addr::new(6, 0), 6);
         board.manipulate(Addr::new(7, 0), 7);
-        assert_eq!(board.candidates_for(Addr::new(8, 0)), [8].into());
+        // assert_eq!(board.candidates_for(Addr::new(8, 0)), [8].into());
+
+        let mut r = BitVec::from_bytes(&[0u8, 0b10000000u8]);
+        r.truncate(9);
+        assert_eq!(board.candidates_for(Addr::new(8, 0)), r);
+        let mut r = BitVec::from_bytes(&[0b11111100u8, 0b10000000u8]);
+        r.truncate(9);
         assert_eq!(
             board.candidates_for(Addr::new(8, 1)),
-            [0, 1, 2, 3, 4, 5, 8].into()
+            // [0, 1, 2, 3, 4, 5, 8].into()
+            r
         );
+        let mut r = BitVec::from_bytes(&[0b01111111u8, 0b10000000u8]);
+        r.truncate(9);
         assert_eq!(
             board.candidates_for(Addr::new(0, 8)),
-            [1, 2, 3, 4, 5, 6, 7, 8].into()
+            r // BitVec::from_bytes(&[0b01111111u8, 0b10000000u8]) // [1, 2, 3, 4, 5, 6, 7, 8].into()
         );
     }
 }

@@ -10,3 +10,8 @@ edition = "2021"
 intrusive-collections = "^0"
 fixed-bitset = "^0"
 typenum = "^1"
+bit-set = "0.8.0"
+bit-vec = "0.8.0"
+
+[profile.release]
+debug=true
