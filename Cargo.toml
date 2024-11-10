@@ -10,6 +10,7 @@ edition = "2021"
 bit-vec = "0.8.0"
 fixedbitset = "0.5.7"
 bitset-core = "0.1.1"
+bit-set = "0.8.0"
 
 [profile.release]
 debug=true

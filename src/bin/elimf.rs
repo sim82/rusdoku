@@ -7,10 +7,15 @@ use std::io::{self, BufRead};
 struct Addr {
     x: usize,
     y: usize,
+    b: usize,
 }
 impl Addr {
     pub fn new(x: usize, y: usize) -> Addr {
-        Addr { x, y }
+        Addr {
+            x,
+            y,
+            b: (y / 3) * 3 + (x / 3),
+        }
     }
 }
 #[derive(Default, PartialEq, Eq, Debug)]
@@ -93,12 +98,9 @@ impl Board {
     }
     fn get_b_mut(&mut self, addr: Addr) -> &mut u16 {
         if !Self::USE_UNSAFE {
-            &mut self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+            &mut self.b_free[addr.b]
         } else {
-            unsafe {
-                self.b_free
-                    .get_unchecked_mut((addr.y / 3) * 3 + (addr.x / 3))
-            }
+            unsafe { self.b_free.get_unchecked_mut(addr.b) }
         }
     }
     fn get_h(&self, addr: Addr) -> u16 {
@@ -117,9 +119,9 @@ impl Board {
     }
     fn get_b(&self, addr: Addr) -> u16 {
         if !Self::USE_UNSAFE {
-            self.b_free[(addr.y / 3) * 3 + (addr.x / 3)]
+            self.b_free[addr.b]
         } else {
-            unsafe { *self.b_free.get_unchecked((addr.y / 3) * 3 + (addr.x / 3)) }
+            unsafe { *self.b_free.get_unchecked(addr.b) }
         }
     }
     pub fn manipulate(&mut self, addr: Addr, num: usize) -> Edit {
@@ -169,7 +171,7 @@ impl Board {
                 return Some(Vec::new());
             }
         }
-        let Addr { x, y } = self.open[min_i];
+        let Addr { x, y, b: _ } = self.open[min_i];
         self.open.swap_remove(min_i);
         for c in 0..9 {
             if !min_candidates.bit_test(c) {
