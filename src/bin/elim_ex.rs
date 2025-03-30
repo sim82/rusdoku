@@ -3,6 +3,9 @@ use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
+const USE_UNSAFE: bool = false;
+const STOP_AFTER_FIRST_SOLUTION: bool = false;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Addr {
     x: usize,
@@ -76,57 +79,56 @@ impl Board {
                         }
                     }
 
-                    board.manipulate(addr, num);
+                    board.manipulate(&addr, num);
                 }
             }
         }
         board
     }
 
-    const USE_UNSAFE: bool = false;
-    fn get_h_mut(&mut self, addr: Addr) -> &mut u16 {
-        if !Self::USE_UNSAFE {
+    fn get_h_mut(&mut self, addr: &Addr) -> &mut u16 {
+        if !USE_UNSAFE {
             &mut self.h_free[addr.y]
         } else {
             unsafe { self.h_free.get_unchecked_mut(addr.y) }
         }
     }
-    fn get_v_mut(&mut self, addr: Addr) -> &mut u16 {
-        if !Self::USE_UNSAFE {
+    fn get_v_mut(&mut self, addr: &Addr) -> &mut u16 {
+        if !USE_UNSAFE {
             &mut self.v_free[addr.x]
         } else {
             unsafe { self.v_free.get_unchecked_mut(addr.x) }
         }
     }
-    fn get_b_mut(&mut self, addr: Addr) -> &mut u16 {
-        if !Self::USE_UNSAFE {
+    fn get_b_mut(&mut self, addr: &Addr) -> &mut u16 {
+        if !USE_UNSAFE {
             &mut self.b_free[addr.b]
         } else {
             unsafe { self.b_free.get_unchecked_mut(addr.b) }
         }
     }
-    fn get_h(&self, addr: Addr) -> u16 {
-        if !Self::USE_UNSAFE {
+    fn get_h(&self, addr: &Addr) -> u16 {
+        if !USE_UNSAFE {
             self.h_free[addr.y]
         } else {
             unsafe { *self.h_free.get_unchecked(addr.y) }
         }
     }
-    fn get_v(&self, addr: Addr) -> u16 {
-        if !Self::USE_UNSAFE {
+    fn get_v(&self, addr: &Addr) -> u16 {
+        if !USE_UNSAFE {
             self.v_free[addr.x]
         } else {
             unsafe { *self.v_free.get_unchecked(addr.x) }
         }
     }
-    fn get_b(&self, addr: Addr) -> u16 {
-        if !Self::USE_UNSAFE {
+    fn get_b(&self, addr: &Addr) -> u16 {
+        if !USE_UNSAFE {
             self.b_free[addr.b]
         } else {
             unsafe { *self.b_free.get_unchecked(addr.b) }
         }
     }
-    pub fn manipulate(&mut self, addr: Addr, num: usize) -> Edit {
+    pub fn manipulate(&mut self, addr: &Addr, num: usize) -> Edit {
         assert!(num < 9);
 
         self.get_h_mut(addr).bit_reset(num);
@@ -137,80 +139,20 @@ impl Board {
         assert_eq!(*f, Field::Empty);
         *f = Field::Set(num as u8);
         Edit {
-            addr,
+            addr: *addr,
             num: num as u8,
         }
     }
     pub fn rollback(&mut self, edit: Edit) {
-        self.get_h_mut(edit.addr).bit_set(edit.num as usize);
-        self.get_v_mut(edit.addr).bit_set(edit.num as usize);
-        self.get_b_mut(edit.addr).bit_set(edit.num as usize);
+        self.get_h_mut(&edit.addr).bit_set(edit.num as usize);
+        self.get_v_mut(&edit.addr).bit_set(edit.num as usize);
+        self.get_b_mut(&edit.addr).bit_set(edit.num as usize);
         let f = &mut self.fields[edit.addr.y][edit.addr.x];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty;
     }
-    pub fn candidates_for(&self, addr: Addr) -> u16 {
+    pub fn candidates_for(&self, addr: &Addr) -> u16 {
         self.get_h(addr) & self.get_v(addr) & self.get_b(addr)
-    }
-    pub fn solve(&mut self) -> Option<Vec<Vec<Edit>>> {
-        if self.open.is_empty() {
-            return Some(vec![Vec::new()]);
-            // return Some(Vec::new());
-        }
-        let mut edit_alternatives: Vec<Vec<Edit>> = Default::default();
-        let mut min_candidates = 0u16;
-        let mut min_i = usize::MAX;
-        {
-            let mut min = u32::MAX;
-            for (i, field) in self.open.iter().enumerate() {
-                let candidates = self.candidates_for(*field);
-                let num = candidates.count_ones();
-                if num < min {
-                    min_i = i;
-                    min = num;
-                    min_candidates = candidates;
-                }
-                if min == 1 {
-                    break;
-                }
-            }
-            if min_i == usize::MAX {
-                // return Some(vec![Vec::new()]);
-                panic!("no minimal candidate found. should be impossible.")
-            }
-        }
-        let Addr { x, y, b: _ } = self.open[min_i];
-        self.open.swap_remove(min_i);
-        let open = self.open.len();
-        for c in 0..9 {
-            if !min_candidates.bit_test(c) {
-                continue;
-            }
-            let edit = self.manipulate(Addr::new(x, y), c.into());
-            match self.solve() {
-                Some(solution_alternatives) => {
-                    self.rollback(edit.clone());
-                    let lens = solution_alternatives
-                        .iter()
-                        .map(|alt| alt.len())
-                        .collect::<Vec<_>>();
-                    // println!("lens: {} {:?}", open, lens);
-                    for mut solution_edits in solution_alternatives {
-                        solution_edits.push(edit.clone());
-                        edit_alternatives.push(solution_edits);
-                    }
-                }
-                None => {
-                    self.rollback(edit.clone());
-                }
-            }
-        }
-        self.open.push(Addr::new(x, y));
-        if edit_alternatives.is_empty() {
-            None
-        } else {
-            Some(edit_alternatives)
-        }
     }
     pub fn print(&self) {
         for y in 0..9 {
@@ -225,6 +167,60 @@ impl Board {
     }
 }
 
+fn solve(board: &mut Board) -> Option<Vec<Vec<Edit>>> {
+    if board.open.is_empty() {
+        return Some(vec![Vec::new()]);
+    }
+    let mut edit_alternatives: Vec<Vec<Edit>> = Default::default();
+    let mut min_candidates = 0u16;
+    let mut min_i = usize::MAX;
+    {
+        let mut min = u32::MAX;
+        for (i, field) in board.open.iter().enumerate() {
+            let candidates = board.candidates_for(field);
+            let num = candidates.count_ones();
+            if num < min {
+                min_i = i;
+                min = num;
+                min_candidates = candidates;
+            }
+            if min == 1 {
+                break;
+            }
+        }
+        if min_i == usize::MAX {
+            panic!("no minimal candidate found. should be impossible.")
+        }
+    }
+    let addr = board.open.swap_remove(min_i);
+    for c in 0..9 {
+        if !min_candidates.bit_test(c) {
+            continue;
+        }
+        let edit = board.manipulate(&addr, c.into());
+        match solve(board) {
+            Some(solution_alternatives) => {
+                board.rollback(edit.clone());
+                for mut solution_edits in solution_alternatives {
+                    solution_edits.push(edit.clone());
+                    edit_alternatives.push(solution_edits);
+                }
+                if STOP_AFTER_FIRST_SOLUTION {
+                    break;
+                }
+            }
+            None => {
+                board.rollback(edit.clone());
+            }
+        }
+    }
+    board.open.push(addr);
+    if edit_alternatives.is_empty() {
+        None
+    } else {
+        Some(edit_alternatives)
+    }
+}
 fn main() {
     let args = args();
     if args.len() != 2 {
@@ -241,7 +237,7 @@ fn main() {
         let mut board = Board::from_line(&line[..]);
         println!("=========================\nsolving:\n");
         board.print();
-        let solved = board.solve();
+        let solved = solve(&mut board);
         match solved {
             Some(alternative_edits) => {
                 for mut edits in alternative_edits {
@@ -249,7 +245,7 @@ fn main() {
                     // println!("edits: {} {:?}", edits.len(), edits);
                     let mut board = board.clone();
                     while let Some(edit) = edits.pop() {
-                        board.manipulate(edit.addr, edit.num.into());
+                        board.manipulate(&edit.addr, edit.num.into());
                     }
                     board.print();
                 }
@@ -265,7 +261,7 @@ mod test {
     #[test]
     fn test_manipulate() {
         let mut board = Board::default();
-        let a = Addr::new(0, 0);
+        let a = &Addr::new(0, 0);
         assert!(board.get_h(a).count_ones() == 9);
         let edit = board.manipulate(a, 0);
         assert!(board.get_h(a).count_ones() == 8);
@@ -273,7 +269,7 @@ mod test {
         board.rollback(edit);
         assert!(board.get_h(a).count_ones() == 9);
 
-        let a = Addr::new(8, 8);
+        let a = &Addr::new(8, 8);
         let edit = board.manipulate(a, 6);
         assert!(board.get_h(a).count_ones() == 8);
         assert!(board.get_h(a).bit_test(6) == false);
