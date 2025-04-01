@@ -3,7 +3,7 @@ use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 struct Addr {
     x: usize,
     y: usize,
@@ -48,7 +48,7 @@ impl Default for Board {
         }
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct Edit {
     addr: Addr,
     num: u8,
@@ -140,6 +140,12 @@ impl Board {
     }
 }
 
+#[derive(Debug, Default)]
+struct IterState2 {
+    candidates: u16,
+    edit: Edit,
+    addr: Addr,
+}
 #[derive(Debug)]
 enum IterState {
     Initial,
@@ -150,71 +156,70 @@ enum IterState {
     },
 }
 fn solve(board: &mut Board) -> bool {
-    let mut stack = Vec::<IterState>::new();
+    let mut stack = Vec::<IterState2>::new();
 
-    stack.push(IterState::Initial);
+    stack.push(IterState2::default());
     let mut max_depth: usize = 0;
     let mut num_steps: usize = 0;
 
     loop {
         max_depth = max_depth.max(stack.len());
         num_steps += 1;
-        match stack.pop() {
-            Some(IterState::Initial) => {
-                if board.open.is_empty() {
-                    board.print();
-                    println!("max depth: {}, steps: {}", max_depth, num_steps);
-                    return true;
-                }
-                let (mut min_candidates, min_i) = best_candidate(board);
-                let addr = board.open.swap_remove(min_i);
-
-                println!("best candidate: {:?} {}", addr, min_candidates);
-                let test = min_candidates.trailing_zeros();
-                if test >= 9 {
-                    // unsolvable -> return / backtrack
-                    board.open.push(addr);
-                } else {
-                    // test candidate field:
-                    // 1. knock out lowest bit
-                    // 2. 'recursion'
-                    min_candidates.bit_reset(test as usize);
-                    let edit = board.manipulate(&addr, test as usize);
-                    stack.push(IterState::Applied {
-                        candidates: min_candidates,
-                        edit,
-                        addr,
-                    });
-                    stack.push(IterState::Initial)
-                }
+        let cur_state = stack.last_mut().expect("stack underflow");
+        if cur_state.candidates == 0 {
+            if board.open.is_empty() {
+                board.print();
+                println!("max depth: {}, steps: {}", max_depth, num_steps);
+                return true;
             }
+            let (mut min_candidates, min_i) = best_candidate(board);
+            let addr = board.open.swap_remove(min_i);
 
-            Some(IterState::Applied {
-                mut candidates,
-                edit,
-                addr,
-            }) => {
-                board.rollback(edit);
-                let test = candidates.trailing_zeros();
-                // println!("test: {} {}", test, candidates);
-                if test < 9 {
-                    // test candidate field:
-                    // 1. knock out lowest bit
-                    // 2. 'recursion'
-                    candidates.bit_reset(test as usize);
-                    let edit = board.manipulate(&addr, test as usize);
-                    stack.push(IterState::Applied {
-                        candidates,
-                        edit,
-                        addr,
-                    });
-                    stack.push(IterState::Initial);
-                } else {
-                    // all candidate numbers knocked out but not solved -> return / backtrack
-                    board.open.push(addr);
-                }
+            println!("best candidate: {:?} {}", addr, min_candidates);
+            let test = min_candidates.trailing_zeros();
+            if test >= 9 {
+                // unsolvable -> return / backtrack
+                stack.pop();
+                board.open.push(addr);
+            } else {
+                // test candidate field:
+                // 1. knock out lowest bit
+                // 2. 'recursion'
+                min_candidates.bit_reset(test as usize);
+                let edit = board.manipulate(&addr, test as usize);
+                // stack.push(IterState::Applied {
+                //     candidates: min_candidates,
+                //     edit,
+                //     addr,
+                // });
+                cur_state.candidates = min_candidates;
+                cur_state.edit = edit;
+                cur_state.addr = addr;
+                stack.push(IterState2::default());
             }
-            None => panic!("stack underflow"),
+        } else {
+            board.rollback(cur_state.edit.clone());
+            let test = cur_state.candidates.trailing_zeros();
+            // println!("test: {} {}", test, candidates);
+            if test < 9 {
+                // test candidate field:
+                // 1. knock out lowest bit
+                // 2. 'recursion'
+                cur_state.candidates.bit_reset(test as usize);
+                let edit = board.manipulate(&cur_state.addr, test as usize);
+                cur_state.edit = edit;
+
+                // stack.push(IterState::Applied {
+                //     candidates,
+                //     edit,
+                //     addr,
+                // });
+                stack.push(IterState2::default());
+            } else {
+                // all candidate numbers knocked out but not solved -> return / backtrack
+                board.open.push(cur_state.addr);
+                stack.pop();
+            }
         }
     }
 }
