@@ -3,9 +3,6 @@ use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
-const USE_UNSAFE: bool = false;
-const STOP_AFTER_FIRST_SOLUTION: bool = false;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Addr {
     x: usize,
@@ -87,46 +84,22 @@ impl Board {
     }
 
     fn get_h_mut(&mut self, addr: &Addr) -> &mut u16 {
-        if !USE_UNSAFE {
-            &mut self.h_free[addr.y]
-        } else {
-            unsafe { self.h_free.get_unchecked_mut(addr.y) }
-        }
+        &mut self.h_free[addr.y]
     }
     fn get_v_mut(&mut self, addr: &Addr) -> &mut u16 {
-        if !USE_UNSAFE {
-            &mut self.v_free[addr.x]
-        } else {
-            unsafe { self.v_free.get_unchecked_mut(addr.x) }
-        }
+        &mut self.v_free[addr.x]
     }
     fn get_b_mut(&mut self, addr: &Addr) -> &mut u16 {
-        if !USE_UNSAFE {
-            &mut self.b_free[addr.b]
-        } else {
-            unsafe { self.b_free.get_unchecked_mut(addr.b) }
-        }
+        &mut self.b_free[addr.b]
     }
     fn get_h(&self, addr: &Addr) -> u16 {
-        if !USE_UNSAFE {
-            self.h_free[addr.y]
-        } else {
-            unsafe { *self.h_free.get_unchecked(addr.y) }
-        }
+        self.h_free[addr.y]
     }
     fn get_v(&self, addr: &Addr) -> u16 {
-        if !USE_UNSAFE {
-            self.v_free[addr.x]
-        } else {
-            unsafe { *self.v_free.get_unchecked(addr.x) }
-        }
+        self.v_free[addr.x]
     }
     fn get_b(&self, addr: &Addr) -> u16 {
-        if !USE_UNSAFE {
-            self.b_free[addr.b]
-        } else {
-            unsafe { *self.b_free.get_unchecked(addr.b) }
-        }
+        self.b_free[addr.b]
     }
     pub fn manipulate(&mut self, addr: &Addr, num: usize) -> Edit {
         assert!(num < 9);
@@ -167,12 +140,86 @@ impl Board {
     }
 }
 
+#[derive(Debug)]
+enum IterState {
+    Initial,
+    Applied {
+        candidates: u16,
+        edit: Edit,
+        addr: Addr,
+    },
+}
 fn solve(board: &mut Board) -> bool {
-    if board.open.is_empty() {
-        board.print();
-        return true;
-        // return Some(Vec::new());
+    let mut stack = Vec::<IterState>::new();
+
+    stack.push(IterState::Initial);
+    let mut max_depth: usize = 0;
+    let mut num_steps: usize = 0;
+
+    loop {
+        max_depth = max_depth.max(stack.len());
+        num_steps += 1;
+        match stack.pop() {
+            Some(IterState::Initial) => {
+                if board.open.is_empty() {
+                    board.print();
+                    println!("max depth: {}, steps: {}", max_depth, num_steps);
+                    return true;
+                }
+                let (mut min_candidates, min_i) = best_candidate(board);
+                let addr = board.open.swap_remove(min_i);
+
+                // println!("best candidate: {:?} {}", addr, min_candidates);
+                let test = min_candidates.trailing_zeros();
+                if test >= 9 {
+                    // unsolvable -> return / backtrack
+                    board.open.push(addr);
+                } else {
+                    // test candidate field:
+                    // 1. knock out lowest bit
+                    // 2. 'recursion'
+                    min_candidates.bit_reset(test as usize);
+                    let edit = board.manipulate(&addr, test as usize);
+                    stack.push(IterState::Applied {
+                        candidates: min_candidates,
+                        edit,
+                        addr,
+                    });
+                    stack.push(IterState::Initial)
+                }
+            }
+
+            Some(IterState::Applied {
+                mut candidates,
+                edit,
+                addr,
+            }) => {
+                board.rollback(edit);
+                let test = candidates.trailing_zeros();
+                // println!("test: {} {}", test, candidates);
+                if test < 9 {
+                    // test candidate field:
+                    // 1. knock out lowest bit
+                    // 2. 'recursion'
+                    candidates.bit_reset(test as usize);
+                    let edit = board.manipulate(&addr, test as usize);
+                    stack.push(IterState::Applied {
+                        candidates,
+                        edit,
+                        addr,
+                    });
+                    stack.push(IterState::Initial);
+                } else {
+                    // all candidate numbers knocked out but not solved -> return / backtrack
+                    board.open.push(addr);
+                }
+            }
+            None => panic!("stack underflow"),
+        }
     }
+}
+
+fn best_candidate(board: &mut Board) -> (u16, usize) {
     let mut min_candidates = 0u16;
     let mut min_i = usize::MAX;
     {
@@ -193,24 +240,7 @@ fn solve(board: &mut Board) -> bool {
             panic!("no minimal candidate found. should be impossible.")
         }
     }
-    let addr = board.open.swap_remove(min_i);
-    for c in 0..9 {
-        if !min_candidates.bit_test(c) {
-            continue;
-        }
-        let edit = board.manipulate(&addr, c.into());
-        match solve(board) {
-            true => {
-                board.rollback(edit.clone());
-                return true;
-            }
-            false => {
-                board.rollback(edit.clone());
-            }
-        }
-    }
-    board.open.push(addr);
-    false
+    (min_candidates, min_i)
 }
 fn main() {
     let args = args();
