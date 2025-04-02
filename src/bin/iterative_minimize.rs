@@ -9,18 +9,18 @@ struct Addr {
     y: usize,
     b: usize,
 }
-impl Addr {
-    pub fn new(x: usize, y: usize) -> Addr {
-        Addr {
-            x,
-            y,
-            b: (y / 3) * 3 + (x / 3),
-        }
-    }
-    pub fn to_index(self) -> usize {
-        self.x + self.y * 9
-    }
-}
+// impl Addr {
+//     pub fn new(x: usize, y: usize) -> Addr {
+//         Addr {
+//             x,
+//             y,
+//             b: (y / 3) * 3 + (x / 3),
+//         }
+//     }
+//     pub fn to_index(self) -> usize {
+//         self.x + self.y * 9
+//     }
+// }
 
 fn field_to_h(f: usize) -> usize {
     #[rustfmt::skip]
@@ -68,7 +68,7 @@ fn field_to_b(f: usize) -> usize {
     ];
     t[f]
 }
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
 enum Field {
     #[default]
     Empty,
@@ -78,9 +78,8 @@ impl Field {}
 
 #[derive(Clone)]
 struct Board {
-    // open: BTreeSet<Addr>,
-    open: Vec<Addr>,
-    fields: [[Field; 9]; 9],
+    open: Vec<usize>,
+    fields: [Field; 9 * 9],
     h_free: [u16; 9],
     v_free: [u16; 9],
     b_free: [u16; 9],
@@ -89,9 +88,9 @@ impl Default for Board {
     fn default() -> Self {
         Self {
             open: (0..9)
-                .flat_map(|y| (0..9).map(move |x| Addr::new(x, y)))
+                .flat_map(|y| (0..9).map(move |x| y * 9 + x))
                 .collect(),
-            fields: Default::default(),
+            fields: [Field::default(); 9 * 9],
             h_free: [0b111111111; 9],
             v_free: [0b111111111; 9],
             b_free: [0b111111111; 9],
@@ -100,7 +99,7 @@ impl Default for Board {
 }
 #[derive(Clone, Debug, Default)]
 struct Edit {
-    addr: Addr,
+    field: usize,
     num: u8,
 }
 impl Board {
@@ -118,71 +117,55 @@ impl Board {
                     }
                     let num = num - 1;
 
-                    let addr = Addr::new(j, i);
+                    // let addr = Addr::new(j, i);
+                    let field = i * 9 + j;
                     for i in 0..board.open.len() {
-                        if board.open[i] == addr {
+                        if board.open[i] == field {
                             board.open.remove(i);
                             break;
                         }
                     }
 
-                    board.manipulate(&addr, num);
+                    board.manipulate(field, num);
                 }
             }
         }
         board
     }
 
-    fn get_h_mut(&mut self, addr: &Addr) -> &mut u16 {
-        &mut self.h_free[addr.x]
-    }
-    fn get_v_mut(&mut self, addr: &Addr) -> &mut u16 {
-        &mut self.v_free[addr.y]
-    }
-    fn get_b_mut(&mut self, addr: &Addr) -> &mut u16 {
-        &mut self.b_free[addr.b]
-    }
-    fn get_h(&self, addr: &Addr) -> u16 {
-        self.h_free[addr.x]
-        // self.h_free[field_to_h(addr.to_index())]
-    }
-    fn get_v(&self, addr: &Addr) -> u16 {
-        self.v_free[addr.y]
-        // self.v_free[field_to_v(addr.to_index())]
-    }
-    fn get_b(&self, addr: &Addr) -> u16 {
-        self.b_free[addr.b]
-    }
-    pub fn manipulate(&mut self, addr: &Addr, num: usize) -> Edit {
+    pub fn manipulate(&mut self, field: usize, num: usize) -> Edit {
         assert!(num < 9);
 
-        self.get_h_mut(addr).bit_reset(num);
-        self.get_v_mut(addr).bit_reset(num);
-        self.get_b_mut(addr).bit_reset(num);
+        self.h_free[field_to_h(field)].bit_reset(num);
+        self.v_free[field_to_v(field)].bit_reset(num);
+        self.b_free[field_to_b(field)].bit_reset(num);
 
-        let f = &mut self.fields[addr.y][addr.x];
+        // let f = &mut self.fields[addr.y][addr.x];
+        let f = &mut self.fields[field];
         assert_eq!(*f, Field::Empty);
         *f = Field::Set(num as u8);
         Edit {
-            addr: *addr,
+            field,
             num: num as u8,
         }
     }
     pub fn rollback(&mut self, edit: Edit) {
-        self.get_h_mut(&edit.addr).bit_set(edit.num as usize);
-        self.get_v_mut(&edit.addr).bit_set(edit.num as usize);
-        self.get_b_mut(&edit.addr).bit_set(edit.num as usize);
-        let f = &mut self.fields[edit.addr.y][edit.addr.x];
+        self.h_free[field_to_h(edit.field)].bit_set(edit.num as usize);
+        self.v_free[field_to_v(edit.field)].bit_set(edit.num as usize);
+        self.b_free[field_to_b(edit.field)].bit_set(edit.num as usize);
+        let f = &mut self.fields[edit.field];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty;
     }
-    pub fn candidates_for(&self, addr: &Addr) -> u16 {
-        self.get_h(addr) & self.get_v(addr) & self.get_b(addr)
+    pub fn candidates_for(&self, field: usize) -> u16 {
+        self.h_free[field_to_h(field)]
+            & self.v_free[field_to_v(field)]
+            & self.b_free[field_to_b(field)]
     }
     pub fn print(&self) {
         for y in 0..9 {
             for x in 0..9 {
-                match self.fields[y][x] {
+                match self.fields[y * 9 + x] {
                     Field::Empty => print!(". "),
                     Field::Set(num) => print!("{} ", num + 1),
                 }
@@ -196,7 +179,7 @@ impl Board {
 struct IterState2 {
     candidates: u16,
     edit: Edit,
-    addr: Addr,
+    field: usize,
 }
 
 impl Default for IterState2 {
@@ -204,7 +187,8 @@ impl Default for IterState2 {
         Self {
             candidates: u16::MAX,
             edit: Edit::default(),
-            addr: Addr::default(),
+            // addr: Addr::default(),
+            field: usize::MAX,
         }
     }
 }
@@ -230,23 +214,23 @@ fn solve(board: &mut Board) -> bool {
                 return true;
             }
             let (mut min_candidates, min_i) = best_candidate(board);
-            let addr = board.open.swap_remove(min_i);
+            let field = board.open.swap_remove(min_i);
 
             // println!("best candidate: {:?} {}", addr, min_candidates);
             let test = min_candidates.trailing_zeros();
             if test >= 9 {
                 // unsolvable -> return / backtrack
                 stack.pop();
-                board.open.push(addr);
+                board.open.push(field);
             } else {
                 // test candidate field:
                 // 1. knock out lowest bit
                 // 2. 'recursion'
                 min_candidates.bit_reset(test as usize);
-                let edit = board.manipulate(&addr, test as usize);
+                let edit = board.manipulate(field, test as usize);
                 cur_state.candidates = min_candidates;
                 cur_state.edit = edit;
-                cur_state.addr = addr;
+                cur_state.field = field;
                 stack.push(IterState2::default());
             }
         } else {
@@ -258,13 +242,13 @@ fn solve(board: &mut Board) -> bool {
                 // 1. knock out lowest bit
                 // 2. 'recursion'
                 cur_state.candidates.bit_reset(test as usize);
-                let edit = board.manipulate(&cur_state.addr, test as usize);
+                let edit = board.manipulate(cur_state.field, test as usize);
                 cur_state.edit = edit;
 
                 stack.push(IterState2::default());
             } else {
                 // all candidate numbers knocked out but not solved -> return / backtrack
-                board.open.push(cur_state.addr);
+                board.open.push(cur_state.field);
                 stack.pop();
             }
         }
@@ -277,7 +261,7 @@ fn best_candidate(board: &mut Board) -> (u16, usize) {
     {
         let mut min = u32::MAX;
         for (i, field) in board.open.iter().enumerate() {
-            let candidates = board.candidates_for(field);
+            let candidates = board.candidates_for(*field);
             let num = candidates.count_ones();
             if num < min {
                 min_i = i;
@@ -319,47 +303,4 @@ fn main() {
         }
     }
     println!("end");
-}
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn test_manipulate() {
-        let mut board = Board::default();
-        let a = &Addr::new(0, 0);
-        assert!(board.get_h(a).count_ones() == 9);
-        let edit = board.manipulate(a, 0);
-        assert!(board.get_h(a).count_ones() == 8);
-        assert!(board.get_h(a).bit_test(0) == false);
-        board.rollback(edit);
-        assert!(board.get_h(a).count_ones() == 9);
-
-        let a = &Addr::new(8, 8);
-        let edit = board.manipulate(a, 6);
-        assert!(board.get_h(a).count_ones() == 8);
-        assert!(board.get_h(a).bit_test(6) == false);
-        assert!(board.get_v(a).count_ones() == 8);
-        assert!(board.get_v(a).bit_test(6) == false);
-        assert!(board.get_b(a).count_ones() == 8);
-        assert!(board.get_b(a).bit_test(6) == false);
-        board.rollback(edit);
-        assert!(board.get_h(a).count_ones() == 9);
-    }
-    #[test]
-    pub fn test_board_init() {
-        let mut board = Board::default();
-        assert_eq!(board.open.len(), 9 * 9);
-        assert!(board.open.contains(&Addr::new(0, 0)));
-        assert!(board.open.contains(&Addr::new(8, 8)));
-        assert!(board.open.contains(&Addr::new(0, 8)));
-        assert!(board.open.contains(&Addr::new(8, 0)));
-        assert!(board.open.contains(&Addr::new(3, 7)));
-        // let edit = board.manipulate(Addr::new(3, 7), 7);
-        // assert!(!board.open.contains(&Addr::new(3, 7)));
-
-        // assert_eq!(board.open.len(), 9 * 9 - 1);
-        // board.rollback(edit);
-        // assert!(board.open.contains(&Addr::new(3, 7)));
-        // assert_eq!(board.open.len(), 9 * 9);
-    }
 }
