@@ -3,71 +3,44 @@ use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-struct Addr {
-    x: usize,
-    y: usize,
-    b: usize,
-}
-// impl Addr {
-//     pub fn new(x: usize, y: usize) -> Addr {
-//         Addr {
-//             x,
-//             y,
-//             b: (y / 3) * 3 + (x / 3),
-//         }
-//     }
-//     pub fn to_index(self) -> usize {
-//         self.x + self.y * 9
-//     }
-// }
+#[rustfmt::skip]
+const F2H : [usize; 9 * 9] = [
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+    0,1,2,3,4,5,6,7,8, 
+];
+#[rustfmt::skip]
+const F2V : [usize; 9 * 9] = [
+    0,0,0,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,
+    2,2,2,2,2,2,2,2,2,
+    3,3,3,3,3,3,3,3,3,
+    4,4,4,4,4,4,4,4,4,
+    5,5,5,5,5,5,5,5,5,
+    6,6,6,6,6,6,6,6,6,
+    7,7,7,7,7,7,7,7,7,
+    8,8,8,8,8,8,8,8,8,
+    
+];
+#[rustfmt::skip]
+const F2B : [usize; 9 * 9] = [
+    0,0,0,1,1,1,2,2,2,
+    0,0,0,1,1,1,2,2,2,
+    0,0,0,1,1,1,2,2,2,
+    3,3,3,4,4,4,5,5,5,
+    3,3,3,4,4,4,5,5,5,
+    3,3,3,4,4,4,5,5,5,
+    6,6,6,7,7,7,8,8,8,
+    6,6,6,7,7,7,8,8,8,
+    6,6,6,7,7,7,8,8,8,
+];
 
-fn field_to_h(f: usize) -> usize {
-    #[rustfmt::skip]
-    let t = [
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-        0,1,2,3,4,5,6,7,8, 
-    ];
-    t[f]
-}
-fn field_to_v(f: usize) -> usize {
-    #[rustfmt::skip]
-    let t = [
-        0,0,0,0,0,0,0,0,0,
-        1,1,1,1,1,1,1,1,1,
-        2,2,2,2,2,2,2,2,2,
-        3,3,3,3,3,3,3,3,3,
-        4,4,4,4,4,4,4,4,4,
-        5,5,5,5,5,5,5,5,5,
-        6,6,6,6,6,6,6,6,6,
-        7,7,7,7,7,7,7,7,7,
-        8,8,8,8,8,8,8,8,8,
-        
-    ];
-    t[f]
-}
-fn field_to_b(f: usize) -> usize {
-    #[rustfmt::skip]
-    let t = [
-        0,0,0,1,1,1,2,2,2,
-        0,0,0,1,1,1,2,2,2,
-        0,0,0,1,1,1,2,2,2,
-        3,3,3,4,4,4,5,5,5,
-        3,3,3,4,4,4,5,5,5,
-        3,3,3,4,4,4,5,5,5,
-        6,6,6,7,7,7,8,8,8,
-        6,6,6,7,7,7,8,8,8,
-        6,6,6,7,7,7,8,8,8,
-    ];
-    t[f]
-}
 #[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
 enum Field {
     #[default]
@@ -136,9 +109,9 @@ impl Board {
     pub fn manipulate(&mut self, field: usize, num: usize) -> Edit {
         assert!(num < 9);
 
-        self.h_free[field_to_h(field)].bit_reset(num);
-        self.v_free[field_to_v(field)].bit_reset(num);
-        self.b_free[field_to_b(field)].bit_reset(num);
+        self.h_free[F2H[field]].bit_reset(num);
+        self.v_free[F2V[field]].bit_reset(num);
+        self.b_free[F2B[field]].bit_reset(num);
 
         // let f = &mut self.fields[addr.y][addr.x];
         let f = &mut self.fields[field];
@@ -150,17 +123,15 @@ impl Board {
         }
     }
     pub fn rollback(&mut self, edit: Edit) {
-        self.h_free[field_to_h(edit.field)].bit_set(edit.num as usize);
-        self.v_free[field_to_v(edit.field)].bit_set(edit.num as usize);
-        self.b_free[field_to_b(edit.field)].bit_set(edit.num as usize);
+        self.h_free[F2H[edit.field]].bit_set(edit.num as usize);
+        self.v_free[F2V[edit.field]].bit_set(edit.num as usize);
+        self.b_free[F2B[edit.field]].bit_set(edit.num as usize);
         let f = &mut self.fields[edit.field];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty;
     }
     pub fn candidates_for(&self, field: usize) -> u16 {
-        self.h_free[field_to_h(field)]
-            & self.v_free[field_to_v(field)]
-            & self.b_free[field_to_b(field)]
+        self.h_free[F2H[field]] & self.v_free[F2V[field]] & self.b_free[F2B[field]]
     }
     pub fn print(&self) {
         for y in 0..9 {
@@ -175,39 +146,31 @@ impl Board {
     }
 }
 
-#[derive(Debug)]
-struct IterState2 {
-    candidates: u16,
-    edit: Edit,
-    field: usize,
-}
-
-impl Default for IterState2 {
-    fn default() -> Self {
-        Self {
-            candidates: u16::MAX,
-            edit: Edit::default(),
-            // addr: Addr::default(),
-            field: usize::MAX,
-        }
-    }
-}
 fn solve(board: &mut Board) -> bool {
-    // let mut candidate_stack = Vec::<u16>::new();
-    // let mut edit_stack = Vec::<Edit>::new();
+    let mut candidates_stack = Vec::<u16>::new();
+    let mut edit_stack = Vec::<Edit>::new();
+    let mut field_stack = Vec::<usize>::new();
     // let mut addr_stack = Ve
 
-    let mut stack = Vec::<IterState2>::new();
+    // let mut stack = Vec::<IterState2>::new();
 
-    stack.push(IterState2::default());
+    // stack.push(IterState2::default());
+    candidates_stack.push(u16::MAX);
+    edit_stack.push(Edit::default());
+    field_stack.push(usize::MAX);
+
     let mut max_depth: usize = 0;
     let mut num_steps: usize = 0;
 
     loop {
-        max_depth = max_depth.max(stack.len());
+        max_depth = max_depth.max(candidates_stack.len());
         num_steps += 1;
-        let cur_state = stack.last_mut().expect("stack underflow");
-        if cur_state.candidates == u16::MAX {
+        // let cur_state = stack.last_mut().expect("stack underflow");
+        let cur_candidates = candidates_stack.last_mut().expect("candidate stack empty");
+        let cur_edit = edit_stack.last_mut().expect("edit stack empty");
+        let cur_field = field_stack.last_mut().expect("field stack empty");
+
+        if *cur_candidates == u16::MAX {
             if board.open.is_empty() {
                 board.print();
                 println!("max depth: {}, steps: {}", max_depth, num_steps);
@@ -220,7 +183,10 @@ fn solve(board: &mut Board) -> bool {
             let test = min_candidates.trailing_zeros();
             if test >= 9 {
                 // unsolvable -> return / backtrack
-                stack.pop();
+                // stack.pop();
+                candidates_stack.pop();
+                edit_stack.pop();
+                field_stack.pop();
                 board.open.push(field);
             } else {
                 // test candidate field:
@@ -228,28 +194,36 @@ fn solve(board: &mut Board) -> bool {
                 // 2. 'recursion'
                 min_candidates.bit_reset(test as usize);
                 let edit = board.manipulate(field, test as usize);
-                cur_state.candidates = min_candidates;
-                cur_state.edit = edit;
-                cur_state.field = field;
-                stack.push(IterState2::default());
+                *cur_candidates = min_candidates;
+                *cur_edit = edit;
+                *cur_field = field;
+                // stack.push(IterState2::default());
+                candidates_stack.push(u16::MAX);
+                edit_stack.push(Edit::default());
+                field_stack.push(usize::MAX);
             }
         } else {
-            board.rollback(cur_state.edit.clone());
-            let test = cur_state.candidates.trailing_zeros();
+            board.rollback(cur_edit.clone());
+            let test = cur_candidates.trailing_zeros();
             // println!("test: {} {}", test, candidates);
             if test < 9 {
                 // test candidate field:
                 // 1. knock out lowest bit
                 // 2. 'recursion'
-                cur_state.candidates.bit_reset(test as usize);
-                let edit = board.manipulate(cur_state.field, test as usize);
-                cur_state.edit = edit;
+                cur_candidates.bit_reset(test as usize);
+                let edit = board.manipulate(*cur_field, test as usize);
+                *cur_edit = edit;
 
-                stack.push(IterState2::default());
+                // stack.push(IterState2::default());
+                candidates_stack.push(u16::MAX);
+                edit_stack.push(Edit::default());
+                field_stack.push(usize::MAX);
             } else {
                 // all candidate numbers knocked out but not solved -> return / backtrack
-                board.open.push(cur_state.field);
-                stack.pop();
+                board.open.push(*cur_field);
+                candidates_stack.pop();
+                edit_stack.pop();
+                field_stack.pop();
             }
         }
     }
