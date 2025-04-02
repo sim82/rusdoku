@@ -17,6 +17,56 @@ impl Addr {
             b: (y / 3) * 3 + (x / 3),
         }
     }
+    pub fn to_index(self) -> usize {
+        self.x + self.y * 9
+    }
+}
+
+fn field_to_h(f: usize) -> usize {
+    #[rustfmt::skip]
+    let t = [
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+        0,1,2,3,4,5,6,7,8, 
+    ];
+    t[f]
+}
+fn field_to_v(f: usize) -> usize {
+    #[rustfmt::skip]
+    let t = [
+        0,0,0,0,0,0,0,0,0,
+        1,1,1,1,1,1,1,1,1,
+        2,2,2,2,2,2,2,2,2,
+        3,3,3,3,3,3,3,3,3,
+        4,4,4,4,4,4,4,4,4,
+        5,5,5,5,5,5,5,5,5,
+        6,6,6,6,6,6,6,6,6,
+        7,7,7,7,7,7,7,7,7,
+        8,8,8,8,8,8,8,8,8,
+        
+    ];
+    t[f]
+}
+fn field_to_b(f: usize) -> usize {
+    #[rustfmt::skip]
+    let t = [
+        0,0,0,1,1,1,2,2,2,
+        0,0,0,1,1,1,2,2,2,
+        0,0,0,1,1,1,2,2,2,
+        3,3,3,4,4,4,5,5,5,
+        3,3,3,4,4,4,5,5,5,
+        3,3,3,4,4,4,5,5,5,
+        6,6,6,7,7,7,8,8,8,
+        6,6,6,7,7,7,8,8,8,
+        6,6,6,7,7,7,8,8,8,
+    ];
+    t[f]
 }
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
 enum Field {
@@ -84,19 +134,21 @@ impl Board {
     }
 
     fn get_h_mut(&mut self, addr: &Addr) -> &mut u16 {
-        &mut self.h_free[addr.y]
+        &mut self.h_free[addr.x]
     }
     fn get_v_mut(&mut self, addr: &Addr) -> &mut u16 {
-        &mut self.v_free[addr.x]
+        &mut self.v_free[addr.y]
     }
     fn get_b_mut(&mut self, addr: &Addr) -> &mut u16 {
         &mut self.b_free[addr.b]
     }
     fn get_h(&self, addr: &Addr) -> u16 {
-        self.h_free[addr.y]
+        self.h_free[addr.x]
+        // self.h_free[field_to_h(addr.to_index())]
     }
     fn get_v(&self, addr: &Addr) -> u16 {
-        self.v_free[addr.x]
+        self.v_free[addr.y]
+        // self.v_free[field_to_v(addr.to_index())]
     }
     fn get_b(&self, addr: &Addr) -> u16 {
         self.b_free[addr.b]
@@ -157,6 +209,10 @@ impl Default for IterState2 {
     }
 }
 fn solve(board: &mut Board) -> bool {
+    // let mut candidate_stack = Vec::<u16>::new();
+    // let mut edit_stack = Vec::<Edit>::new();
+    // let mut addr_stack = Ve
+
     let mut stack = Vec::<IterState2>::new();
 
     stack.push(IterState2::default());
