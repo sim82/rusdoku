@@ -169,7 +169,7 @@ fn solve(board: &mut Board) -> bool {
                 let (mut min_candidates, min_i) = best_candidate(board);
                 let addr = board.open.swap_remove(min_i);
 
-                println!("best candidate: {:?} {}", addr, min_candidates);
+                // println!("best candidate: {:?} {}", addr, min_candidates);
                 let test = min_candidates.trailing_zeros();
                 if test >= 9 {
                     // unsolvable -> return / backtrack
