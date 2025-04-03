@@ -219,7 +219,7 @@ const STACK_SIZE: usize = 9 * 9;
 // }
 fn solve(board: &mut Board) -> bool {
     let mut candidates_stack = [u16::MAX; STACK_SIZE];
-    let mut edit_stack = [Edit::default(); STACK_SIZE];
+    let mut num_stack = [0u8; STACK_SIZE];
     let mut field_stack = [u8::MAX; STACK_SIZE];
     let mut stack_ptr = 0usize; // first element is already correct content
 
@@ -230,7 +230,7 @@ fn solve(board: &mut Board) -> bool {
         max_depth = max_depth.max(stack_ptr + 1);
         num_steps += 1;
         let cur_candidates = &mut candidates_stack[stack_ptr];
-        let cur_edit = &mut edit_stack[stack_ptr];
+        let cur_num = &mut num_stack[stack_ptr];
         let cur_field = &mut field_stack[stack_ptr];
 
         let (mut min_candidates, field) = if *cur_candidates == u16::MAX {
@@ -243,7 +243,7 @@ fn solve(board: &mut Board) -> bool {
             let field = board.open.swap_remove(min_i);
             (min_candidates, field)
         } else {
-            board.rollback(cur_edit.field, cur_edit.num);
+            board.rollback(*cur_field, *cur_num);
             (*cur_candidates, *cur_field)
         };
         let test = min_candidates.trailing_zeros() as u8;
@@ -254,11 +254,11 @@ fn solve(board: &mut Board) -> bool {
             min_candidates.bit_reset(test as usize);
             board.manipulate(field, test);
             *cur_candidates = min_candidates;
-            *cur_edit = Edit { field, num: test };
+            *cur_num = test;
             *cur_field = field;
             stack_ptr += 1;
             candidates_stack[stack_ptr] = u16::MAX;
-            edit_stack[stack_ptr] = Edit::default();
+            num_stack[stack_ptr] = 0u8;
             field_stack[stack_ptr] = u8::MAX;
         } else {
             // unsolvable -> return / backtrack
