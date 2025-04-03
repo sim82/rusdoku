@@ -70,7 +70,7 @@ impl Default for Board {
         }
     }
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Copy)]
 struct Edit {
     field: u8,
     num: u8,
@@ -84,13 +84,12 @@ impl Board {
                 let c = line.next().expect("line ended early");
 
                 if c.is_numeric() {
-                    let num = c.to_digit(10).unwrap() as usize;
+                    let num = c.to_digit(10).unwrap() as u8;
                     if num < 1 {
                         panic!("bad num in input: {}", num);
                     }
                     let num = num - 1;
 
-                    // let addr = Addr::new(j, i);
                     let field = (i * 9 + j) as u8;
                     for i in 0..board.open.len() {
                         if board.open[i] == field {
@@ -106,12 +105,12 @@ impl Board {
         board
     }
 
-    pub fn manipulate(&mut self, field: u8, num: usize) -> Edit {
+    pub fn manipulate(&mut self, field: u8, num: u8) -> Edit {
         assert!(num < 9);
 
-        self.h_free[F2H[field as usize]].bit_reset(num);
-        self.v_free[F2V[field as usize]].bit_reset(num);
-        self.b_free[F2B[field as usize]].bit_reset(num);
+        self.h_free[F2H[field as usize]].bit_reset(num as usize);
+        self.v_free[F2V[field as usize]].bit_reset(num as usize);
+        self.b_free[F2B[field as usize]].bit_reset(num as usize);
 
         // let f = &mut self.fields[addr.y][addr.x];
         let f = &mut self.fields[field as usize];
@@ -147,86 +146,124 @@ impl Board {
         }
     }
 }
+const STACK_SIZE: usize = 9 * 9;
 
+// fn solve(board: &mut Board) -> bool {
+//     let mut candidates_stack = [u16::MAX; STACK_SIZE];
+//     let mut edit_stack = [Edit::default(); STACK_SIZE];
+//     let mut field_stack = [u8::MAX; STACK_SIZE];
+//     let mut stack_ptr = 0usize; // first element is already correct content
+
+//     let mut max_depth: usize = 0;
+//     let mut num_steps: usize = 0;
+
+//     loop {
+//         max_depth = max_depth.max(stack_ptr + 1);
+//         num_steps += 1;
+//         let cur_candidates = &mut candidates_stack[stack_ptr];
+//         let cur_edit = &mut edit_stack[stack_ptr];
+//         let cur_field = &mut field_stack[stack_ptr];
+
+//         if *cur_candidates == u16::MAX {
+//             if board.open.is_empty() {
+//                 board.print();
+//                 println!("max depth: {}, steps: {}", max_depth, num_steps);
+//                 return true;
+//             }
+//             let (mut min_candidates, min_i) = best_candidate(board);
+//             let field = board.open.swap_remove(min_i);
+
+//             // println!("best candidate: {:?} {}", addr, min_candidates);
+//             let test = min_candidates.trailing_zeros() as u8;
+//             if test >= 9 {
+//                 // unsolvable -> return / backtrack
+//                 stack_ptr -= 1;
+//                 board.open.push(field);
+//             } else {
+//                 // test candidate field:
+//                 // 1. knock out lowest bit
+//                 // 2. 'recursion'
+//                 min_candidates.bit_reset(test as usize);
+//                 let edit = board.manipulate(field, test);
+//                 *cur_candidates = min_candidates;
+//                 *cur_edit = edit;
+//                 *cur_field = field;
+//                 stack_ptr += 1;
+//                 candidates_stack[stack_ptr] = u16::MAX;
+//                 edit_stack[stack_ptr] = Edit::default();
+//                 field_stack[stack_ptr] = u8::MAX;
+//             }
+//         } else {
+//             board.rollback(cur_edit.clone());
+//             let test = cur_candidates.trailing_zeros() as u8;
+//             // println!("test: {} {}", test, candidates);
+//             if test < 9 {
+//                 // test candidate field:
+//                 // 1. knock out lowest bit
+//                 // 2. 'recursion'
+//                 cur_candidates.bit_reset(test as usize);
+//                 let edit = board.manipulate(*cur_field, test);
+//                 *cur_edit = edit;
+
+//                 stack_ptr += 1;
+//                 candidates_stack[stack_ptr] = u16::MAX;
+//                 edit_stack[stack_ptr] = Edit::default();
+//                 field_stack[stack_ptr] = u8::MAX;
+//             } else {
+//                 // all candidate numbers knocked out but not solved -> return / backtrack
+//                 board.open.push(*cur_field);
+//                 stack_ptr -= 1;
+//             }
+//         }
+//     }
+// }
 fn solve(board: &mut Board) -> bool {
-    let mut candidates_stack = Vec::<u16>::new();
-    let mut edit_stack = Vec::<Edit>::new();
-    let mut field_stack = Vec::<u8>::new();
-    // let mut addr_stack = Ve
-
-    // let mut stack = Vec::<IterState2>::new();
-
-    // stack.push(IterState2::default());
-    candidates_stack.push(u16::MAX);
-    edit_stack.push(Edit::default());
-    field_stack.push(u8::MAX);
+    let mut candidates_stack = [u16::MAX; STACK_SIZE];
+    let mut edit_stack = [Edit::default(); STACK_SIZE];
+    let mut field_stack = [u8::MAX; STACK_SIZE];
+    let mut stack_ptr = 0usize; // first element is already correct content
 
     let mut max_depth: usize = 0;
     let mut num_steps: usize = 0;
 
     loop {
-        max_depth = max_depth.max(candidates_stack.len());
+        max_depth = max_depth.max(stack_ptr + 1);
         num_steps += 1;
-        // let cur_state = stack.last_mut().expect("stack underflow");
-        let cur_candidates = candidates_stack.last_mut().expect("candidate stack empty");
-        let cur_edit = edit_stack.last_mut().expect("edit stack empty");
-        let cur_field = field_stack.last_mut().expect("field stack empty");
+        let cur_candidates = &mut candidates_stack[stack_ptr];
+        let cur_edit = &mut edit_stack[stack_ptr];
+        let cur_field = &mut field_stack[stack_ptr];
 
-        if *cur_candidates == u16::MAX {
+        let (mut min_candidates, field) = if *cur_candidates == u16::MAX {
             if board.open.is_empty() {
                 board.print();
                 println!("max depth: {}, steps: {}", max_depth, num_steps);
                 return true;
             }
-            let (mut min_candidates, min_i) = best_candidate(board);
+            let (min_candidates, min_i) = best_candidate(board);
             let field = board.open.swap_remove(min_i);
-
-            // println!("best candidate: {:?} {}", addr, min_candidates);
-            let test = min_candidates.trailing_zeros();
-            if test >= 9 {
-                // unsolvable -> return / backtrack
-                // stack.pop();
-                candidates_stack.pop();
-                edit_stack.pop();
-                field_stack.pop();
-                board.open.push(field);
-            } else {
-                // test candidate field:
-                // 1. knock out lowest bit
-                // 2. 'recursion'
-                min_candidates.bit_reset(test as usize);
-                let edit = board.manipulate(field, test as usize);
-                *cur_candidates = min_candidates;
-                *cur_edit = edit;
-                *cur_field = field;
-                // stack.push(IterState2::default());
-                candidates_stack.push(u16::MAX);
-                edit_stack.push(Edit::default());
-                field_stack.push(u8::MAX);
-            }
+            (min_candidates, field)
         } else {
             board.rollback(cur_edit.clone());
-            let test = cur_candidates.trailing_zeros();
-            // println!("test: {} {}", test, candidates);
-            if test < 9 {
-                // test candidate field:
-                // 1. knock out lowest bit
-                // 2. 'recursion'
-                cur_candidates.bit_reset(test as usize);
-                let edit = board.manipulate(*cur_field, test as usize);
-                *cur_edit = edit;
-
-                // stack.push(IterState2::default());
-                candidates_stack.push(u16::MAX);
-                edit_stack.push(Edit::default());
-                field_stack.push(u8::MAX);
-            } else {
-                // all candidate numbers knocked out but not solved -> return / backtrack
-                board.open.push(*cur_field);
-                candidates_stack.pop();
-                edit_stack.pop();
-                field_stack.pop();
-            }
+            (*cur_candidates, *cur_field)
+        };
+        let test = min_candidates.trailing_zeros() as u8;
+        if test < 9 {
+            // test candidate field:
+            // 1. knock out lowest bit
+            // 2. 'recursion'
+            min_candidates.bit_reset(test as usize);
+            let edit = board.manipulate(field, test);
+            *cur_candidates = min_candidates;
+            *cur_edit = edit;
+            *cur_field = field;
+            stack_ptr += 1;
+            candidates_stack[stack_ptr] = u16::MAX;
+            edit_stack[stack_ptr] = Edit::default();
+            field_stack[stack_ptr] = u8::MAX;
+        } else {
+            // unsolvable -> return / backtrack
+            stack_ptr -= 1;
+            board.open.push(field);
         }
     }
 }
