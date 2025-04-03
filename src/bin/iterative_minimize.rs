@@ -70,11 +70,6 @@ impl Default for Board {
         }
     }
 }
-#[derive(Clone, Debug, Default, Copy)]
-struct Edit {
-    field: u8,
-    num: u8,
-}
 impl Board {
     pub fn from_line(line: &str) -> Board {
         let mut board = Board::default();
@@ -122,14 +117,6 @@ impl Board {
         board
     }
 
-    pub fn rollback(&mut self, field: u8, num: u8) {
-        self.h_free[F2H[field as usize]].bit_set(num as usize);
-        self.v_free[F2V[field as usize]].bit_set(num as usize);
-        self.b_free[F2B[field as usize]].bit_set(num as usize);
-        let f = &mut self.fields[field as usize];
-        assert_eq!(*f, Field::Set(num));
-        *f = Field::Empty;
-    }
     pub fn candidates_for(&self, field: u8) -> u16 {
         self.h_free[F2H[field as usize]]
             & self.v_free[F2V[field as usize]]
@@ -175,7 +162,10 @@ fn solve(board: &mut Board) -> bool {
             (*cur_candidates, min_i) = best_candidate(board);
             *cur_field = board.open.swap_remove(min_i);
         } else {
-            board.rollback(*cur_field, *cur_num);
+            board.h_free[F2H[*cur_field as usize]].bit_set(*cur_num as usize);
+            board.v_free[F2V[*cur_field as usize]].bit_set(*cur_num as usize);
+            board.b_free[F2B[*cur_field as usize]].bit_set(*cur_num as usize);
+            board.fields[*cur_field as usize] = Field::Empty;
         };
         let test = cur_candidates.trailing_zeros() as u8;
         if test < 9 {
