@@ -133,89 +133,88 @@ impl Board {
             println!();
         }
     }
+    fn solve(&mut self) -> bool {
+        let mut candidates_stack = [u16::MAX; STACK_SIZE];
+        let mut num_stack = [0u8; STACK_SIZE];
+        let mut field_stack = [u8::MAX; STACK_SIZE];
+        let mut stack_ptr = 0usize; // first element is already correct content
+
+        let mut max_depth: usize = 0;
+        let mut num_steps: usize = 0;
+
+        loop {
+            max_depth = max_depth.max(stack_ptr + 1);
+            num_steps += 1;
+            let cur_candidates = &mut candidates_stack[stack_ptr];
+            let cur_num = &mut num_stack[stack_ptr];
+            let cur_field = &mut field_stack[stack_ptr];
+
+            if *cur_candidates == u16::MAX {
+                if self.open.is_empty() {
+                    self.print();
+                    println!("max depth: {}, steps: {}", max_depth, num_steps);
+                    return true;
+                }
+                let min_i;
+                (*cur_candidates, min_i) = self.best_candidate();
+                *cur_field = self.open.swap_remove(min_i);
+            } else {
+                self.h_free[F2H[*cur_field as usize]].bit_set(*cur_num as usize);
+                self.v_free[F2V[*cur_field as usize]].bit_set(*cur_num as usize);
+                self.b_free[F2B[*cur_field as usize]].bit_set(*cur_num as usize);
+                self.fields[*cur_field as usize] = Field::Empty;
+            };
+            let test = cur_candidates.trailing_zeros() as u8;
+            if test < 9 {
+                // test candidate field:
+                // 1. knock out lowest bit
+                // 2. 'recursion'
+                cur_candidates.bit_reset(test as usize);
+                assert!(test < 9);
+
+                self.h_free[F2H[*cur_field as usize]].bit_reset(test as usize);
+                self.v_free[F2V[*cur_field as usize]].bit_reset(test as usize);
+                self.b_free[F2B[*cur_field as usize]].bit_reset(test as usize);
+                self.fields[*cur_field as usize] = Field::Set(test as u8);
+
+                *cur_num = test;
+                stack_ptr += 1;
+                candidates_stack[stack_ptr] = u16::MAX;
+                num_stack[stack_ptr] = 0u8;
+                field_stack[stack_ptr] = u8::MAX;
+            } else {
+                // unsolvable -> return / backtrack
+                stack_ptr -= 1;
+                self.open.push(*cur_field);
+            }
+        }
+    }
+    fn best_candidate(&self) -> (u16, usize) {
+        let mut min_candidates = 0u16;
+        let mut min_i = usize::MAX;
+        {
+            let mut min = u32::MAX;
+            for (i, field) in self.open.iter().enumerate() {
+                let candidates = self.candidates_for(*field);
+                let num = candidates.count_ones();
+                if num < min {
+                    min_i = i;
+                    min = num;
+                    min_candidates = candidates;
+                }
+                if min == 1 {
+                    break;
+                }
+            }
+            if min_i == usize::MAX {
+                panic!("no minimal candidate found. should be impossible.")
+            }
+        }
+        (min_candidates, min_i)
+    }
 }
 const STACK_SIZE: usize = 9 * 9;
 
-fn solve(board: &mut Board) -> bool {
-    let mut candidates_stack = [u16::MAX; STACK_SIZE];
-    let mut num_stack = [0u8; STACK_SIZE];
-    let mut field_stack = [u8::MAX; STACK_SIZE];
-    let mut stack_ptr = 0usize; // first element is already correct content
-
-    let mut max_depth: usize = 0;
-    let mut num_steps: usize = 0;
-
-    loop {
-        max_depth = max_depth.max(stack_ptr + 1);
-        num_steps += 1;
-        let cur_candidates = &mut candidates_stack[stack_ptr];
-        let cur_num = &mut num_stack[stack_ptr];
-        let cur_field = &mut field_stack[stack_ptr];
-
-        if *cur_candidates == u16::MAX {
-            if board.open.is_empty() {
-                board.print();
-                println!("max depth: {}, steps: {}", max_depth, num_steps);
-                return true;
-            }
-            let min_i;
-            (*cur_candidates, min_i) = best_candidate(board);
-            *cur_field = board.open.swap_remove(min_i);
-        } else {
-            board.h_free[F2H[*cur_field as usize]].bit_set(*cur_num as usize);
-            board.v_free[F2V[*cur_field as usize]].bit_set(*cur_num as usize);
-            board.b_free[F2B[*cur_field as usize]].bit_set(*cur_num as usize);
-            board.fields[*cur_field as usize] = Field::Empty;
-        };
-        let test = cur_candidates.trailing_zeros() as u8;
-        if test < 9 {
-            // test candidate field:
-            // 1. knock out lowest bit
-            // 2. 'recursion'
-            cur_candidates.bit_reset(test as usize);
-            assert!(test < 9);
-
-            board.h_free[F2H[*cur_field as usize]].bit_reset(test as usize);
-            board.v_free[F2V[*cur_field as usize]].bit_reset(test as usize);
-            board.b_free[F2B[*cur_field as usize]].bit_reset(test as usize);
-            board.fields[*cur_field as usize] = Field::Set(test as u8);
-
-            *cur_num = test;
-            stack_ptr += 1;
-            candidates_stack[stack_ptr] = u16::MAX;
-            num_stack[stack_ptr] = 0u8;
-            field_stack[stack_ptr] = u8::MAX;
-        } else {
-            // unsolvable -> return / backtrack
-            stack_ptr -= 1;
-            board.open.push(*cur_field);
-        }
-    }
-}
-
-fn best_candidate(board: &mut Board) -> (u16, usize) {
-    let mut min_candidates = 0u16;
-    let mut min_i = usize::MAX;
-    {
-        let mut min = u32::MAX;
-        for (i, field) in board.open.iter().enumerate() {
-            let candidates = board.candidates_for(*field);
-            let num = candidates.count_ones();
-            if num < min {
-                min_i = i;
-                min = num;
-                min_candidates = candidates;
-            }
-            if min == 1 {
-                break;
-            }
-        }
-        if min_i == usize::MAX {
-            panic!("no minimal candidate found. should be impossible.")
-        }
-    }
-    (min_candidates, min_i)
-}
 fn main() {
     let args = args();
     if args.len() != 2 {
@@ -232,7 +231,7 @@ fn main() {
         let mut board = Board::from_line(&line[..]);
         println!("=========================\nsolving:\n");
         board.print();
-        let solved = solve(&mut board);
+        let solved = board.solve();
         match solved {
             true => {
                 println!("solved.");
