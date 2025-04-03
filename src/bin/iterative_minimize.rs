@@ -51,7 +51,7 @@ impl Field {}
 
 #[derive(Clone)]
 struct Board {
-    open: Vec<usize>,
+    open: Vec<u8>,
     fields: [Field; 9 * 9],
     h_free: [u16; 9],
     v_free: [u16; 9],
@@ -72,7 +72,7 @@ impl Default for Board {
 }
 #[derive(Clone, Debug, Default)]
 struct Edit {
-    field: usize,
+    field: u8,
     num: u8,
 }
 impl Board {
@@ -91,7 +91,7 @@ impl Board {
                     let num = num - 1;
 
                     // let addr = Addr::new(j, i);
-                    let field = i * 9 + j;
+                    let field = (i * 9 + j) as u8;
                     for i in 0..board.open.len() {
                         if board.open[i] == field {
                             board.open.remove(i);
@@ -106,15 +106,15 @@ impl Board {
         board
     }
 
-    pub fn manipulate(&mut self, field: usize, num: usize) -> Edit {
+    pub fn manipulate(&mut self, field: u8, num: usize) -> Edit {
         assert!(num < 9);
 
-        self.h_free[F2H[field]].bit_reset(num);
-        self.v_free[F2V[field]].bit_reset(num);
-        self.b_free[F2B[field]].bit_reset(num);
+        self.h_free[F2H[field as usize]].bit_reset(num);
+        self.v_free[F2V[field as usize]].bit_reset(num);
+        self.b_free[F2B[field as usize]].bit_reset(num);
 
         // let f = &mut self.fields[addr.y][addr.x];
-        let f = &mut self.fields[field];
+        let f = &mut self.fields[field as usize];
         assert_eq!(*f, Field::Empty);
         *f = Field::Set(num as u8);
         Edit {
@@ -123,15 +123,17 @@ impl Board {
         }
     }
     pub fn rollback(&mut self, edit: Edit) {
-        self.h_free[F2H[edit.field]].bit_set(edit.num as usize);
-        self.v_free[F2V[edit.field]].bit_set(edit.num as usize);
-        self.b_free[F2B[edit.field]].bit_set(edit.num as usize);
-        let f = &mut self.fields[edit.field];
+        self.h_free[F2H[edit.field as usize]].bit_set(edit.num as usize);
+        self.v_free[F2V[edit.field as usize]].bit_set(edit.num as usize);
+        self.b_free[F2B[edit.field as usize]].bit_set(edit.num as usize);
+        let f = &mut self.fields[edit.field as usize];
         assert_eq!(*f, Field::Set(edit.num));
         *f = Field::Empty;
     }
-    pub fn candidates_for(&self, field: usize) -> u16 {
-        self.h_free[F2H[field]] & self.v_free[F2V[field]] & self.b_free[F2B[field]]
+    pub fn candidates_for(&self, field: u8) -> u16 {
+        self.h_free[F2H[field as usize]]
+            & self.v_free[F2V[field as usize]]
+            & self.b_free[F2B[field as usize]]
     }
     pub fn print(&self) {
         for y in 0..9 {
@@ -149,7 +151,7 @@ impl Board {
 fn solve(board: &mut Board) -> bool {
     let mut candidates_stack = Vec::<u16>::new();
     let mut edit_stack = Vec::<Edit>::new();
-    let mut field_stack = Vec::<usize>::new();
+    let mut field_stack = Vec::<u8>::new();
     // let mut addr_stack = Ve
 
     // let mut stack = Vec::<IterState2>::new();
@@ -157,7 +159,7 @@ fn solve(board: &mut Board) -> bool {
     // stack.push(IterState2::default());
     candidates_stack.push(u16::MAX);
     edit_stack.push(Edit::default());
-    field_stack.push(usize::MAX);
+    field_stack.push(u8::MAX);
 
     let mut max_depth: usize = 0;
     let mut num_steps: usize = 0;
@@ -200,7 +202,7 @@ fn solve(board: &mut Board) -> bool {
                 // stack.push(IterState2::default());
                 candidates_stack.push(u16::MAX);
                 edit_stack.push(Edit::default());
-                field_stack.push(usize::MAX);
+                field_stack.push(u8::MAX);
             }
         } else {
             board.rollback(cur_edit.clone());
@@ -217,7 +219,7 @@ fn solve(board: &mut Board) -> bool {
                 // stack.push(IterState2::default());
                 candidates_stack.push(u16::MAX);
                 edit_stack.push(Edit::default());
-                field_stack.push(usize::MAX);
+                field_stack.push(u8::MAX);
             } else {
                 // all candidate numbers knocked out but not solved -> return / backtrack
                 board.open.push(*cur_field);
