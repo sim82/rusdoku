@@ -155,8 +155,25 @@ impl Board {
                     println!("max depth: {}, steps: {}", max_depth, num_steps);
                     return true;
                 }
-                let min_i;
-                (*cur_candidates, min_i) = self.best_candidate();
+                *cur_candidates = 0u16;
+                // let mut min_candidates = 0u16;
+                let mut min_i = usize::MAX;
+                let mut min = u32::MAX;
+                for (i, field) in self.open.iter().enumerate() {
+                    let candidates = self.candidates_for(*field);
+                    let num = candidates.count_ones();
+                    if num < min {
+                        min_i = i;
+                        min = num;
+                        *cur_candidates = candidates;
+                    }
+                    if min == 1 {
+                        break;
+                    }
+                }
+                if min_i == usize::MAX {
+                    panic!("no minimal candidate found. should be impossible.")
+                }
                 *cur_field = self.open.swap_remove(min_i);
             } else {
                 self.h_free[F2H[*cur_field as usize]].bit_set(*cur_num as usize);
@@ -188,29 +205,6 @@ impl Board {
                 self.open.push(*cur_field);
             }
         }
-    }
-    fn best_candidate(&self) -> (u16, usize) {
-        let mut min_candidates = 0u16;
-        let mut min_i = usize::MAX;
-        {
-            let mut min = u32::MAX;
-            for (i, field) in self.open.iter().enumerate() {
-                let candidates = self.candidates_for(*field);
-                let num = candidates.count_ones();
-                if num < min {
-                    min_i = i;
-                    min = num;
-                    min_candidates = candidates;
-                }
-                if min == 1 {
-                    break;
-                }
-            }
-            if min_i == usize::MAX {
-                panic!("no minimal candidate found. should be impossible.")
-            }
-        }
-        (min_candidates, min_i)
     }
 }
 const STACK_SIZE: usize = 9 * 9;
