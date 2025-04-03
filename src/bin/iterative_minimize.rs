@@ -105,7 +105,7 @@ impl Board {
         board
     }
 
-    pub fn manipulate(&mut self, field: u8, num: u8) -> Edit {
+    pub fn manipulate(&mut self, field: u8, num: u8) {
         assert!(num < 9);
 
         self.h_free[F2H[field as usize]].bit_reset(num as usize);
@@ -116,17 +116,17 @@ impl Board {
         let f = &mut self.fields[field as usize];
         assert_eq!(*f, Field::Empty);
         *f = Field::Set(num as u8);
-        Edit {
-            field,
-            num: num as u8,
-        }
+        // Edit {
+        //     field,
+        //     num: num as u8,
+        // }
     }
-    pub fn rollback(&mut self, edit: Edit) {
-        self.h_free[F2H[edit.field as usize]].bit_set(edit.num as usize);
-        self.v_free[F2V[edit.field as usize]].bit_set(edit.num as usize);
-        self.b_free[F2B[edit.field as usize]].bit_set(edit.num as usize);
-        let f = &mut self.fields[edit.field as usize];
-        assert_eq!(*f, Field::Set(edit.num));
+    pub fn rollback(&mut self, field: u8, num: u8) {
+        self.h_free[F2H[field as usize]].bit_set(num as usize);
+        self.v_free[F2V[field as usize]].bit_set(num as usize);
+        self.b_free[F2B[field as usize]].bit_set(num as usize);
+        let f = &mut self.fields[field as usize];
+        assert_eq!(*f, Field::Set(num));
         *f = Field::Empty;
     }
     pub fn candidates_for(&self, field: u8) -> u16 {
@@ -243,7 +243,7 @@ fn solve(board: &mut Board) -> bool {
             let field = board.open.swap_remove(min_i);
             (min_candidates, field)
         } else {
-            board.rollback(cur_edit.clone());
+            board.rollback(cur_edit.field, cur_edit.num);
             (*cur_candidates, *cur_field)
         };
         let test = min_candidates.trailing_zeros() as u8;
@@ -252,9 +252,9 @@ fn solve(board: &mut Board) -> bool {
             // 1. knock out lowest bit
             // 2. 'recursion'
             min_candidates.bit_reset(test as usize);
-            let edit = board.manipulate(field, test);
+            board.manipulate(field, test);
             *cur_candidates = min_candidates;
-            *cur_edit = edit;
+            *cur_edit = Edit { field, num: test };
             *cur_field = field;
             stack_ptr += 1;
             candidates_stack[stack_ptr] = u16::MAX;
