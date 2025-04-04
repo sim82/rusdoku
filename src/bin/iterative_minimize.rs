@@ -3,6 +3,7 @@ use std::env::args;
 use std::fs::File;
 use std::io::{self, BufRead};
 
+const STACK_SIZE: usize = 9 * 9;
 const FIELD_UNDEFINED: u8 = u8::MAX;
 const CANDIDATES_UNDEFINED: u16 = u16::MAX;
 
@@ -18,6 +19,7 @@ const F2H : [usize; 9 * 9] = [
     0,1,2,3,4,5,6,7,8, 
     0,1,2,3,4,5,6,7,8, 
 ];
+
 #[rustfmt::skip]
 const F2V : [usize; 9 * 9] = [
     0,0,0,0,0,0,0,0,0,
@@ -29,8 +31,8 @@ const F2V : [usize; 9 * 9] = [
     6,6,6,6,6,6,6,6,6,
     7,7,7,7,7,7,7,7,7,
     8,8,8,8,8,8,8,8,8,
-    
 ];
+
 #[rustfmt::skip]
 const F2B : [usize; 9 * 9] = [
     0,0,0,1,1,1,2,2,2,
@@ -42,6 +44,46 @@ const F2B : [usize; 9 * 9] = [
     6,6,6,7,7,7,8,8,8,
     6,6,6,7,7,7,8,8,8,
     6,6,6,7,7,7,8,8,8,
+];
+
+#[rustfmt::skip]
+const COUNT_ONES : [u8; 256] = [
+    0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4, 
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5, 
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5, 
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5, 
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7, 
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5, 
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6, 
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7, 
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7, 
+    4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8,
+];
+
+#[rustfmt::skip]
+const TRAILING_ZEROS: [u8; 256] = [
+    8,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    6,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    7,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    6,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0
 ];
 
 #[derive(Clone)]
@@ -171,20 +213,19 @@ impl Board {
                 self.b_free[F2B[*cur_field as usize]].bit_set(*cur_num as usize);
                 self.fields[*cur_field as usize] = FIELD_UNDEFINED;
             };
-            let test = cur_candidates.trailing_zeros() as u8;
-            if test < 9 {
+            *cur_num = cur_candidates.trailing_zeros() as u8;
+            if *cur_num < 9 {
                 // test candidate field:
                 // 1. knock out lowest bit
                 // 2. 'recursion'
-                cur_candidates.bit_reset(test as usize);
-                assert!(test < 9);
+                cur_candidates.bit_reset(*cur_num as usize);
+                assert!(*cur_num < 9);
 
-                self.h_free[F2H[*cur_field as usize]].bit_reset(test as usize);
-                self.v_free[F2V[*cur_field as usize]].bit_reset(test as usize);
-                self.b_free[F2B[*cur_field as usize]].bit_reset(test as usize);
-                self.fields[*cur_field as usize] = test as u8;
+                self.h_free[F2H[*cur_field as usize]].bit_reset(*cur_num as usize);
+                self.v_free[F2V[*cur_field as usize]].bit_reset(*cur_num as usize);
+                self.b_free[F2B[*cur_field as usize]].bit_reset(*cur_num as usize);
+                self.fields[*cur_field as usize] = *cur_num as u8;
 
-                *cur_num = test;
                 stack_ptr += 1;
                 candidates_stack[stack_ptr] = CANDIDATES_UNDEFINED;
                 num_stack[stack_ptr] = 0u8;
@@ -197,7 +238,6 @@ impl Board {
         }
     }
 }
-const STACK_SIZE: usize = 9 * 9;
 
 fn main() {
     let args = args();
@@ -224,4 +264,17 @@ fn main() {
         }
     }
     println!("end");
+}
+
+#[test]
+fn gen_count_ones() {
+    let out = (0u8..=255u8).map(|i| i.count_ones()).collect::<Vec<_>>();
+    println!("{:?}", out);
+}
+#[test]
+fn gen_trailing_zeros() {
+    let out = (0u8..=255u8)
+        .map(|i| i.trailing_zeros())
+        .collect::<Vec<_>>();
+    println!("{:?}", out);
 }
