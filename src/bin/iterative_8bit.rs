@@ -110,9 +110,23 @@ const RESET_MASK: [u8; 8] = [
     0b01111111,
 ];
 
+#[rustfmt::skip]
+const OPEN_INITIAL: [u8; 9 * 9] = [
+     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    10,11,12,13,14,15,16,17,18,19,
+    20,21,22,23,24,25,26,27,28,29,
+    30,31,32,33,34,35,36,37,38,39,
+    40,41,42,43,44,45,46,47,48,49,
+    50,51,52,53,54,55,56,57,58,59,
+    60,61,62,63,64,65,66,67,68,69,
+    70,71,72,73,74,75,76,77,78,79,
+    80
+];
+
 #[derive(Clone)]
 struct Board {
-    open: Vec<u8>,
+    open: [u8; 9 * 9],
+    num_open: u8,
     fields: [u8; 9 * 9],
     h_free_l: [u8; 9],
     v_free_l: [u8; 9],
@@ -123,12 +137,9 @@ struct Board {
 }
 impl Default for Board {
     fn default() -> Self {
-        // open.reverse();
         Self {
-            // open: (0..9)
-            //     .flat_map(|y| (0..9).map(move |x| y * 9 + x))
-            //     .collect(),
-            open: (0..(9 * 9)).collect(),
+            open: OPEN_INITIAL,
+            num_open: 9 * 9,
             fields: [FIELD_UNDEFINED; 9 * 9],
             h_free_l: [0b11111111; 9],
             v_free_l: [0b11111111; 9],
@@ -155,9 +166,10 @@ impl Board {
                     let num = num - 1;
 
                     let field = (i * 9 + j) as u8;
-                    for i in 0..board.open.len() {
-                        if board.open[i] == field {
-                            board.open.remove(i);
+                    for i in 0..board.num_open {
+                        if board.open[i as usize] == field {
+                            assert!(i < u8::MAX);
+                            board.remove_open_ordered(i);
                             break;
                         }
                     }
@@ -210,6 +222,29 @@ impl Board {
                 & self.b_free_h[F2B[field as usize]],
         )
     }
+    pub fn push_open(&mut self, field: u8) {
+        assert!(self.num_open < 9 * 9);
+        self.open[self.num_open as usize] = field;
+        self.num_open += 1;
+    }
+    pub fn remove_open(&mut self, i: u8) -> u8 {
+        assert!(i < self.num_open);
+        let field = self.open[i as usize];
+        self.num_open -= 1;
+        self.open[i as usize] = self.open[self.num_open as usize];
+        field
+    }
+    pub fn remove_open_ordered(&mut self, i: u8) -> u8 {
+        // purely to keep it exactly equal to 'high level' versions for verification. 6502 port can use swap/remove version.
+
+        assert!(i < self.num_open);
+        let field = self.open[i as usize];
+        self.open
+            .copy_within((i as usize + 1)..(self.num_open as usize), i as usize);
+
+        self.num_open -= 1;
+        field
+    }
     pub fn print(&self) {
         for y in 0..9 {
             for x in 0..9 {
@@ -222,7 +257,6 @@ impl Board {
         }
     }
     fn solve(&mut self) -> bool {
-        // let mut candidates_stack = [CANDIDATES_UNDEFINED; STACK_SIZE];
         let mut candidates_l_stack = [CANDIDATES_L_UNDEFINED; STACK_SIZE];
         let mut candidates_h_stack = [CANDIDATES_H_UNDEFINED; STACK_SIZE];
         let mut num_stack = [0u8; STACK_SIZE];
@@ -241,41 +275,40 @@ impl Board {
             let cur_field = &mut field_stack[stack_ptr];
 
             if *cur_candidates_h == CANDIDATES_H_UNDEFINED {
-                if self.open.is_empty() {
+                if self.num_open == 0 {
                     self.print();
                     println!("max depth: {}, steps: {}", max_depth, num_steps);
                     return true;
                 }
-                // *cur_candidates = (0u8, 0u8);
-                // let mut min_candidates = 0u16;
-                let mut min_i = usize::MAX;
+                let mut min_i = u8::MAX;
                 let mut min = u32::MAX;
-                for (i, field) in self.open.iter().enumerate() {
-                    let (candidates_l, candidates_h) = self.candidates_for(*field);
+                // println!("open: {:?}", open_slice);
+                for i in 0..self.num_open {
+                    let field = self.open[i as usize];
+                    let (candidates_l, candidates_h) = self.candidates_for(field);
                     // let num = candidates.count_ones();
                     let num = count_ones(candidates_l, candidates_h) as u32;
                     if num < min {
-                        min_i = i;
+                        min_i = i as u8;
                         min = num;
-                        // *cur_candidates = candidates;
                         *cur_candidates_l = candidates_l;
                         *cur_candidates_h = candidates_h;
                     }
                     // fun fact: this check seems to make it worse... not sure why. There may be bias in the
                     // input puzzles to be harder when starting in the top left corner.
+                    // keep it for consistency.
                     if min == 1 {
                         break;
                     }
                 }
-                if min_i == usize::MAX {
+                if min_i == u8::MAX {
                     panic!("no minimal candidate found. should be impossible.")
                 }
-                *cur_field = self.open.swap_remove(min_i);
+                *cur_field = self.remove_open(min_i);
             } else {
                 assert_eq!(self.fields[*cur_field as usize], *cur_num);
                 self.clear_field(*cur_field);
             };
-            // *cur_num = cur_candidates.trailing_zeros() as u8;
             *cur_num = trailing_zeros(*cur_candidates_l, *cur_candidates_h);
             if *cur_num < 9 {
                 // test candidate field:
@@ -293,7 +326,7 @@ impl Board {
             } else {
                 // unsolvable -> return / backtrack
                 stack_ptr -= 1;
-                self.open.push(*cur_field);
+                self.push_open(*cur_field);
             }
         }
     }
@@ -308,10 +341,8 @@ fn bit_reset(v: &mut u8, bit: u8) {
 fn bit_reset88(low: &mut u8, high: &mut u8, bit: u8) {
     if bit < 8 {
         bit_reset(low, bit);
-        // low.bit_reset(bit as usize);
     } else {
         bit_reset(high, bit - 8);
-        // high.bit_reset(bit as usize - 8);
     }
 }
 fn trailing_zeros(low: u8, high: u8) -> u8 {

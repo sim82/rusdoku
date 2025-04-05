@@ -125,6 +125,7 @@ impl Board {
                     let field = (i * 9 + j) as u8;
                     for i in 0..board.open.len() {
                         if board.open[i] == field {
+                            // board.open.swap_remove(i);
                             board.open.remove(i);
                             break;
                         }
@@ -196,6 +197,7 @@ impl Board {
                 // let mut min_candidates = 0u16;
                 let mut min_i = usize::MAX;
                 let mut min = u32::MAX;
+                // println!("open: {:?}", self.open);
                 for (i, field) in self.open.iter().enumerate() {
                     let candidates = self.candidates_for(*field);
                     let num = candidates.count_ones();
