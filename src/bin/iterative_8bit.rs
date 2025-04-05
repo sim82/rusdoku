@@ -142,10 +142,10 @@ struct Board {
     max_depth: usize,
     num_steps: usize,
     min: u8,
-    min_i: u8,
-    tmp_field: u8,
-    tmp_l: u8,
-    tmp_h: u8,
+    selected_open_field: u8,
+    tmp_open_field: u8,
+    candidates_l: u8,
+    candidates_h: u8,
 }
 impl Default for Board {
     fn default() -> Self {
@@ -167,10 +167,10 @@ impl Default for Board {
             max_depth: 0,
             num_steps: 0,
             min: 0,
-            min_i: 0,
-            tmp_field: 0,
-            tmp_l: 0,
-            tmp_h: 0,
+            selected_open_field: 0,
+            tmp_open_field: 0,
+            candidates_l: 0,
+            candidates_h: 0,
         }
     }
 }
@@ -178,35 +178,37 @@ impl Board {
     pub fn from_line(line: &str) -> Board {
         let mut board = Board::default();
         let mut line = line.chars();
-        for i in 0..9 {
-            for j in 0..9 {
-                let c = line.next().expect("line ended early");
+        board.field_stack[0] = 0;
+        while board.field_stack[0] < 9 * 9 {
+            let c = line.next().expect("line ended early");
 
-                if c.is_numeric() {
-                    let num = c.to_digit(10).unwrap() as u8;
-                    if num < 1 {
-                        panic!("bad num in input: {}", num);
-                    }
-                    let num = num - 1;
-
-                    let field = (i * 9 + j) as u8;
-                    for i in 0..board.num_open {
-                        if board.open[i as usize] == field {
-                            assert!(i < u8::MAX);
-                            board.remove_open_ordered(i);
-                            break;
-                        }
-                    }
-
-                    assert!(num < 9);
-                    board.set_field(field, num);
+            if c.is_numeric() {
+                board.num_stack[0] = c.to_digit(10).unwrap() as u8;
+                if board.num_stack[0] < 1 {
+                    panic!("bad num in input: {}", board.num_stack[0]);
                 }
+                board.num_stack[0] -= 1;
+                board.selected_open_field = 0;
+                while board.selected_open_field < board.num_open {
+                    if board.open[board.selected_open_field as usize] == board.field_stack[0] {
+                        assert!(board.selected_open_field < u8::MAX);
+                        board.remove_open_ordered();
+                        break;
+                    }
+                    board.selected_open_field += 1;
+                }
+
+                assert!(board.num_stack[0] < 9);
+                board.set_field();
             }
+            board.field_stack[0] += 1;
         }
         board
     }
 
-    fn set_field(&mut self, cur_field: u8, cur_num: u8) {
+    fn set_field(&mut self) {
+        let cur_field = self.field_stack[self.stack_ptr];
+        let cur_num = self.num_stack[self.stack_ptr];
         assert_eq!(self.fields[cur_field as usize], FIELD_UNDEFINED);
         if cur_num < 8 {
             bit_reset(&mut self.h_free_l[F2H[cur_field as usize]], cur_num);
@@ -220,7 +222,8 @@ impl Board {
         }
         self.fields[cur_field as usize] = cur_num;
     }
-    fn clear_field(&mut self, cur_field: u8) {
+    fn clear_field(&mut self) {
+        let cur_field = self.field_stack[self.stack_ptr];
         assert_ne!(self.fields[cur_field as usize], FIELD_UNDEFINED);
         let cur_num = self.fields[cur_field as usize];
         if cur_num < 8 {
@@ -236,29 +239,30 @@ impl Board {
         self.fields[cur_field as usize] = FIELD_UNDEFINED;
     }
 
-    pub fn candidates_for(&self, field: u8) -> (u8, u8) {
-        (
-            self.h_free_l[F2H[field as usize]]
-                & self.v_free_l[F2V[field as usize]]
-                & self.b_free_l[F2B[field as usize]],
-            self.h_free_h[F2H[field as usize]]
-                & self.v_free_h[F2V[field as usize]]
-                & self.b_free_h[F2B[field as usize]],
-        )
+    pub fn candidates_for_tmp_field(&mut self) {
+        let field = self.open[self.tmp_open_field as usize];
+        self.candidates_l = self.h_free_l[F2H[field as usize]]
+            & self.v_free_l[F2V[field as usize]]
+            & self.b_free_l[F2B[field as usize]];
+        self.candidates_h = self.h_free_h[F2H[field as usize]]
+            & self.v_free_h[F2V[field as usize]]
+            & self.b_free_h[F2B[field as usize]];
     }
-    pub fn push_open(&mut self, field: u8) {
+    pub fn push_open(&mut self) {
+        let field = self.field_stack[self.stack_ptr];
         assert!(self.num_open < 9 * 9);
         self.open[self.num_open as usize] = field;
         self.num_open += 1;
     }
-    pub fn remove_open(&mut self, i: u8) -> u8 {
+    pub fn remove_open(&mut self) {
+        let i = self.selected_open_field;
         assert!(i < self.num_open);
-        let field = self.open[i as usize];
+        self.field_stack[self.stack_ptr] = self.open[i as usize];
         self.num_open -= 1;
         self.open[i as usize] = self.open[self.num_open as usize];
-        field
     }
-    pub fn remove_open_ordered(&mut self, i: u8) -> u8 {
+    pub fn remove_open_ordered(&mut self) -> u8 {
+        let i = self.selected_open_field;
         // purely to keep it exactly equal to 'high level' versions for verification. 6502 port can use swap/remove version.
 
         assert!(i < self.num_open);
@@ -290,11 +294,39 @@ impl Board {
             8 + TRAILING_ZEROS[high as usize]
         }
     }
-    fn apply_candidate(&mut self, bit: u8) {
+    fn apply_candidate(&mut self) {
+        let bit = self.num_stack[self.stack_ptr];
         if bit < 8 {
             bit_reset(&mut self.candidates_l_stack[self.stack_ptr], bit);
         } else {
             bit_reset(&mut self.candidates_h_stack[self.stack_ptr], bit - 8);
+        }
+    }
+    fn select_open_field(&mut self) {
+        self.selected_open_field = u8::MAX;
+        self.min = u8::MAX;
+        self.tmp_open_field = 0;
+        // println!("open: {:?}", open_slice);
+        while self.tmp_open_field < self.num_open {
+            self.candidates_for_tmp_field();
+            let num =
+                COUNT_ONES[self.candidates_l as usize] + COUNT_ONES[self.candidates_h as usize];
+            if num < self.min {
+                self.selected_open_field = self.tmp_open_field as u8;
+                self.min = num;
+                self.candidates_l_stack[self.stack_ptr] = self.candidates_l;
+                self.candidates_h_stack[self.stack_ptr] = self.candidates_h;
+            }
+            // fun fact: this check seems to make it worse... not sure why. There may be bias in the
+            // input puzzles to be harder when starting in the top left corner.
+            // keep it for consistency.
+            if self.min == 1 {
+                break;
+            }
+            self.tmp_open_field += 1;
+        }
+        if self.selected_open_field == u8::MAX {
+            panic!("no minimal candidate found. should be impossible.")
         }
     }
     fn solve(&mut self) -> bool {
@@ -308,36 +340,14 @@ impl Board {
                     println!("max depth: {}, steps: {}", self.max_depth, self.num_steps);
                     return true;
                 }
-                self.min_i = u8::MAX;
-                self.min = u8::MAX;
-                // println!("open: {:?}", open_slice);
-                for i in 0..self.num_open {
-                    self.tmp_field = self.open[i as usize];
-                    (self.tmp_l, self.tmp_h) = self.candidates_for(self.tmp_field);
-                    let num = count_ones(self.tmp_l, self.tmp_h);
-                    if num < self.min {
-                        self.min_i = i as u8;
-                        self.min = num;
-                        self.candidates_l_stack[self.stack_ptr] = self.tmp_l;
-                        self.candidates_h_stack[self.stack_ptr] = self.tmp_h;
-                    }
-                    // fun fact: this check seems to make it worse... not sure why. There may be bias in the
-                    // input puzzles to be harder when starting in the top left corner.
-                    // keep it for consistency.
-                    if self.min == 1 {
-                        break;
-                    }
-                }
-                if self.min_i == u8::MAX {
-                    panic!("no minimal candidate found. should be impossible.")
-                }
-                self.field_stack[self.stack_ptr] = self.remove_open(self.min_i);
+                self.select_open_field();
+                self.remove_open();
             } else {
                 assert_eq!(
                     self.fields[self.field_stack[self.stack_ptr] as usize],
                     self.num_stack[self.stack_ptr]
                 );
-                self.clear_field(self.field_stack[self.stack_ptr]);
+                self.clear_field();
             };
             self.num_stack[self.stack_ptr] = self.select_candidate();
             if self.num_stack[self.stack_ptr] < 9 {
@@ -346,11 +356,8 @@ impl Board {
                 // 2. 'recursion'
                 // cur_candidates.bit_reset(*cur_num as usize);
                 // bit_reset88(cur_candidates_l, cur_candidates_h, *cur_num);
-                self.apply_candidate(self.num_stack[self.stack_ptr]);
-                self.set_field(
-                    self.field_stack[self.stack_ptr],
-                    self.num_stack[self.stack_ptr],
-                );
+                self.apply_candidate();
+                self.set_field();
 
                 self.stack_ptr += 1;
                 self.candidates_l_stack[self.stack_ptr] = CANDIDATES_L_UNDEFINED;
@@ -359,7 +366,7 @@ impl Board {
                 self.field_stack[self.stack_ptr] = FIELD_UNDEFINED;
             } else {
                 // unsolvable -> return / backtrack
-                self.push_open(self.field_stack[self.stack_ptr]);
+                self.push_open();
                 self.stack_ptr -= 1;
             }
         }
@@ -371,10 +378,6 @@ fn bit_set(v: &mut u8, bit: u8) {
 }
 fn bit_reset(v: &mut u8, bit: u8) {
     *v &= RESET_MASK[bit as usize]
-}
-
-fn count_ones(low: u8, high: u8) -> u8 {
-    COUNT_ONES[low as usize] + COUNT_ONES[high as usize]
 }
 
 fn main() {
