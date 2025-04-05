@@ -134,11 +134,6 @@ struct Board {
     h_free_h: [u8; 9],
     v_free_h: [u8; 9],
     b_free_h: [u8; 9],
-    candidates_l_stack: [u8; STACK_SIZE],
-    candidates_h_stack: [u8; STACK_SIZE],
-    num_stack: [u8; STACK_SIZE],
-    field_stack: [u8; STACK_SIZE],
-    stack_ptr: usize,
 }
 impl Default for Board {
     fn default() -> Self {
@@ -152,11 +147,6 @@ impl Default for Board {
             h_free_h: [0b00000001; 9],
             v_free_h: [0b00000001; 9],
             b_free_h: [0b00000001; 9],
-            candidates_l_stack: [CANDIDATES_L_UNDEFINED; STACK_SIZE],
-            candidates_h_stack: [CANDIDATES_H_UNDEFINED; STACK_SIZE],
-            num_stack: [0u8; STACK_SIZE],
-            field_stack: [FIELD_UNDEFINED; STACK_SIZE],
-            stack_ptr: 0,
         }
     }
 }
@@ -266,32 +256,25 @@ impl Board {
             println!();
         }
     }
-
-    fn select_candidate(&self) -> u8 {
-        let low = self.candidates_l_stack[self.stack_ptr];
-        let high = self.candidates_h_stack[self.stack_ptr];
-        if low != 0 {
-            TRAILING_ZEROS[low as usize]
-        } else {
-            8 + TRAILING_ZEROS[high as usize]
-        }
-    }
-    fn apply_candidate(&mut self, bit: u8) {
-        if bit < 8 {
-            bit_reset(&mut self.candidates_l_stack[self.stack_ptr], bit);
-        } else {
-            bit_reset(&mut self.candidates_h_stack[self.stack_ptr], bit - 8);
-        }
-    }
     fn solve(&mut self) -> bool {
+        let mut candidates_l_stack = [CANDIDATES_L_UNDEFINED; STACK_SIZE];
+        let mut candidates_h_stack = [CANDIDATES_H_UNDEFINED; STACK_SIZE];
+        let mut num_stack = [0u8; STACK_SIZE];
+        let mut field_stack = [FIELD_UNDEFINED; STACK_SIZE];
+        let mut stack_ptr = 0usize; // first element is already correct content
+
         let mut max_depth: usize = 0;
         let mut num_steps: usize = 0;
 
         loop {
-            max_depth = max_depth.max(self.stack_ptr + 1);
+            max_depth = max_depth.max(stack_ptr + 1);
             num_steps += 1;
+            let cur_candidates_l = &mut candidates_l_stack[stack_ptr];
+            let cur_candidates_h = &mut candidates_h_stack[stack_ptr];
+            let cur_num = &mut num_stack[stack_ptr];
+            let cur_field = &mut field_stack[stack_ptr];
 
-            if self.candidates_h_stack[self.stack_ptr] == CANDIDATES_H_UNDEFINED {
+            if *cur_candidates_h == CANDIDATES_H_UNDEFINED {
                 if self.num_open == 0 {
                     self.print();
                     println!("max depth: {}, steps: {}", max_depth, num_steps);
@@ -303,12 +286,13 @@ impl Board {
                 for i in 0..self.num_open {
                     let field = self.open[i as usize];
                     let (candidates_l, candidates_h) = self.candidates_for(field);
+                    // let num = candidates.count_ones();
                     let num = count_ones(candidates_l, candidates_h) as u32;
                     if num < min {
                         min_i = i as u8;
                         min = num;
-                        self.candidates_l_stack[self.stack_ptr] = candidates_l;
-                        self.candidates_h_stack[self.stack_ptr] = candidates_h;
+                        *cur_candidates_l = candidates_l;
+                        *cur_candidates_h = candidates_h;
                     }
                     // fun fact: this check seems to make it worse... not sure why. There may be bias in the
                     // input puzzles to be harder when starting in the top left corner.
@@ -320,36 +304,29 @@ impl Board {
                 if min_i == u8::MAX {
                     panic!("no minimal candidate found. should be impossible.")
                 }
-                self.field_stack[self.stack_ptr] = self.remove_open(min_i);
+                *cur_field = self.remove_open(min_i);
             } else {
-                assert_eq!(
-                    self.fields[self.field_stack[self.stack_ptr] as usize],
-                    self.num_stack[self.stack_ptr]
-                );
-                self.clear_field(self.field_stack[self.stack_ptr]);
+                assert_eq!(self.fields[*cur_field as usize], *cur_num);
+                self.clear_field(*cur_field);
             };
-            self.num_stack[self.stack_ptr] = self.select_candidate();
-            if self.num_stack[self.stack_ptr] < 9 {
+            *cur_num = trailing_zeros(*cur_candidates_l, *cur_candidates_h);
+            if *cur_num < 9 {
                 // test candidate field:
                 // 1. knock out lowest bit
                 // 2. 'recursion'
                 // cur_candidates.bit_reset(*cur_num as usize);
-                // bit_reset88(cur_candidates_l, cur_candidates_h, *cur_num);
-                self.apply_candidate(self.num_stack[self.stack_ptr]);
-                self.set_field(
-                    self.field_stack[self.stack_ptr],
-                    self.num_stack[self.stack_ptr],
-                );
+                bit_reset88(cur_candidates_l, cur_candidates_h, *cur_num);
+                self.set_field(*cur_field, *cur_num);
 
-                self.stack_ptr += 1;
-                self.candidates_l_stack[self.stack_ptr] = CANDIDATES_L_UNDEFINED;
-                self.candidates_h_stack[self.stack_ptr] = CANDIDATES_H_UNDEFINED;
-                self.num_stack[self.stack_ptr] = 0u8;
-                self.field_stack[self.stack_ptr] = FIELD_UNDEFINED;
+                stack_ptr += 1;
+                candidates_l_stack[stack_ptr] = CANDIDATES_L_UNDEFINED;
+                candidates_h_stack[stack_ptr] = CANDIDATES_H_UNDEFINED;
+                num_stack[stack_ptr] = 0u8;
+                field_stack[stack_ptr] = FIELD_UNDEFINED;
             } else {
                 // unsolvable -> return / backtrack
-                self.push_open(self.field_stack[self.stack_ptr]);
-                self.stack_ptr -= 1;
+                stack_ptr -= 1;
+                self.push_open(*cur_field);
             }
         }
     }
@@ -360,6 +337,20 @@ fn bit_set(v: &mut u8, bit: u8) {
 }
 fn bit_reset(v: &mut u8, bit: u8) {
     *v &= RESET_MASK[bit as usize]
+}
+fn bit_reset88(low: &mut u8, high: &mut u8, bit: u8) {
+    if bit < 8 {
+        bit_reset(low, bit);
+    } else {
+        bit_reset(high, bit - 8);
+    }
+}
+fn trailing_zeros(low: u8, high: u8) -> u8 {
+    if low != 0 {
+        TRAILING_ZEROS[low as usize]
+    } else {
+        8 + TRAILING_ZEROS[high as usize]
+    }
 }
 
 fn count_ones(low: u8, high: u8) -> u8 {
