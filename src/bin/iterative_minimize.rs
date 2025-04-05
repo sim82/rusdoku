@@ -83,7 +83,7 @@ const TRAILING_ZEROS: [u8; 256] = [
     6,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
     4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
     5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0
+    4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
 ];
 
 #[derive(Clone)]
@@ -130,23 +130,28 @@ impl Board {
                         }
                     }
 
-                    {
-                        let this = &mut board;
-                        let num = num;
-                        assert!(num < 9);
-
-                        this.h_free[F2H[field as usize]].bit_reset(num as usize);
-                        this.v_free[F2V[field as usize]].bit_reset(num as usize);
-                        this.b_free[F2B[field as usize]].bit_reset(num as usize);
-
-                        let f = &mut this.fields[field as usize];
-                        assert_eq!(*f, FIELD_UNDEFINED);
-                        *f = num as u8;
-                    };
+                    assert!(num < 9);
+                    board.set_field(field, num);
                 }
             }
         }
         board
+    }
+
+    fn set_field(&mut self, cur_field: u8, cur_num: u8) {
+        assert_eq!(self.fields[cur_field as usize], FIELD_UNDEFINED);
+        self.h_free[F2H[cur_field as usize]].bit_reset(cur_num as usize);
+        self.v_free[F2V[cur_field as usize]].bit_reset(cur_num as usize);
+        self.b_free[F2B[cur_field as usize]].bit_reset(cur_num as usize);
+        self.fields[cur_field as usize] = cur_num;
+    }
+    fn clear_field(&mut self, cur_field: u8) {
+        assert_ne!(self.fields[cur_field as usize], FIELD_UNDEFINED);
+        let cur_num = self.fields[cur_field as usize];
+        self.h_free[F2H[cur_field as usize]].bit_set(cur_num as usize);
+        self.v_free[F2V[cur_field as usize]].bit_set(cur_num as usize);
+        self.b_free[F2B[cur_field as usize]].bit_set(cur_num as usize);
+        self.fields[cur_field as usize] = FIELD_UNDEFINED;
     }
 
     pub fn candidates_for(&self, field: u8) -> u16 {
@@ -208,10 +213,8 @@ impl Board {
                 }
                 *cur_field = self.open.swap_remove(min_i);
             } else {
-                self.h_free[F2H[*cur_field as usize]].bit_set(*cur_num as usize);
-                self.v_free[F2V[*cur_field as usize]].bit_set(*cur_num as usize);
-                self.b_free[F2B[*cur_field as usize]].bit_set(*cur_num as usize);
-                self.fields[*cur_field as usize] = FIELD_UNDEFINED;
+                assert_eq!(self.fields[*cur_field as usize], *cur_num);
+                self.clear_field(*cur_field);
             };
             *cur_num = cur_candidates.trailing_zeros() as u8;
             if *cur_num < 9 {
@@ -219,12 +222,7 @@ impl Board {
                 // 1. knock out lowest bit
                 // 2. 'recursion'
                 cur_candidates.bit_reset(*cur_num as usize);
-                assert!(*cur_num < 9);
-
-                self.h_free[F2H[*cur_field as usize]].bit_reset(*cur_num as usize);
-                self.v_free[F2V[*cur_field as usize]].bit_reset(*cur_num as usize);
-                self.b_free[F2B[*cur_field as usize]].bit_reset(*cur_num as usize);
-                self.fields[*cur_field as usize] = *cur_num as u8;
+                self.set_field(*cur_field, *cur_num);
 
                 stack_ptr += 1;
                 candidates_stack[stack_ptr] = CANDIDATES_UNDEFINED;
