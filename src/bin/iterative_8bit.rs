@@ -139,6 +139,13 @@ struct Board {
     num_stack: [u8; STACK_SIZE],
     field_stack: [u8; STACK_SIZE],
     stack_ptr: usize,
+    max_depth: usize,
+    num_steps: usize,
+    min: u8,
+    min_i: u8,
+    tmp_field: u8,
+    tmp_l: u8,
+    tmp_h: u8,
 }
 impl Default for Board {
     fn default() -> Self {
@@ -157,6 +164,13 @@ impl Default for Board {
             num_stack: [0u8; STACK_SIZE],
             field_stack: [FIELD_UNDEFINED; STACK_SIZE],
             stack_ptr: 0,
+            max_depth: 0,
+            num_steps: 0,
+            min: 0,
+            min_i: 0,
+            tmp_field: 0,
+            tmp_l: 0,
+            tmp_h: 0,
         }
     }
 }
@@ -284,43 +298,40 @@ impl Board {
         }
     }
     fn solve(&mut self) -> bool {
-        let mut max_depth: usize = 0;
-        let mut num_steps: usize = 0;
-
         loop {
-            max_depth = max_depth.max(self.stack_ptr + 1);
-            num_steps += 1;
+            self.max_depth = self.max_depth.max(self.stack_ptr + 1);
+            self.num_steps += 1;
 
             if self.candidates_h_stack[self.stack_ptr] == CANDIDATES_H_UNDEFINED {
                 if self.num_open == 0 {
                     self.print();
-                    println!("max depth: {}, steps: {}", max_depth, num_steps);
+                    println!("max depth: {}, steps: {}", self.max_depth, self.num_steps);
                     return true;
                 }
-                let mut min_i = u8::MAX;
-                let mut min = u32::MAX;
+                self.min_i = u8::MAX;
+                self.min = u8::MAX;
                 // println!("open: {:?}", open_slice);
                 for i in 0..self.num_open {
-                    let field = self.open[i as usize];
-                    let (candidates_l, candidates_h) = self.candidates_for(field);
-                    let num = count_ones(candidates_l, candidates_h) as u32;
-                    if num < min {
-                        min_i = i as u8;
-                        min = num;
-                        self.candidates_l_stack[self.stack_ptr] = candidates_l;
-                        self.candidates_h_stack[self.stack_ptr] = candidates_h;
+                    self.tmp_field = self.open[i as usize];
+                    (self.tmp_l, self.tmp_h) = self.candidates_for(self.tmp_field);
+                    let num = count_ones(self.tmp_l, self.tmp_h);
+                    if num < self.min {
+                        self.min_i = i as u8;
+                        self.min = num;
+                        self.candidates_l_stack[self.stack_ptr] = self.tmp_l;
+                        self.candidates_h_stack[self.stack_ptr] = self.tmp_h;
                     }
                     // fun fact: this check seems to make it worse... not sure why. There may be bias in the
                     // input puzzles to be harder when starting in the top left corner.
                     // keep it for consistency.
-                    if min == 1 {
+                    if self.min == 1 {
                         break;
                     }
                 }
-                if min_i == u8::MAX {
+                if self.min_i == u8::MAX {
                     panic!("no minimal candidate found. should be impossible.")
                 }
-                self.field_stack[self.stack_ptr] = self.remove_open(min_i);
+                self.field_stack[self.stack_ptr] = self.remove_open(self.min_i);
             } else {
                 assert_eq!(
                     self.fields[self.field_stack[self.stack_ptr] as usize],
