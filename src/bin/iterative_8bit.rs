@@ -205,6 +205,38 @@ impl Board {
         }
         board
     }
+    fn dump(&self) {
+        fn dump_bin(v: &[u8]) {
+            for i in v {
+                print!("{:08b} ", i);
+            }
+            println!("");
+        }
+        println!("feilds: {:?}", self.fields);
+        println!(
+            "open: {}\n{:?}",
+            self.num_open,
+            // &self.open[0..(self.num_open as usize)]
+            &self.open
+        );
+        println!("h low: ");
+        dump_bin(&self.h_free_l);
+
+        println!("h high: ");
+        dump_bin(&self.h_free_h);
+
+        println!("v low: ");
+        dump_bin(&self.v_free_l);
+
+        println!("v high: ");
+        dump_bin(&self.v_free_h);
+
+        println!("b low: ");
+        dump_bin(&self.b_free_l);
+
+        println!("b high: ");
+        dump_bin(&self.b_free_h);
+    }
 
     fn set_field(&mut self) {
         let cur_field = self.field_stack[self.stack_ptr];
@@ -381,19 +413,25 @@ fn bit_reset(v: &mut u8, bit: u8) {
 }
 
 fn main() {
-    let args = args();
-    if args.len() != 2 {
-        println!("missing filename");
-        return;
-    }
+    let filename = {
+        let args = args();
+        if args.len() < 2 {
+            println!("missing filename");
+            return;
+        }
 
-    let filename = args.last().unwrap();
+        args.last().unwrap()
+    };
+    let dump = args().any(|arg| arg == "-d");
 
     println!("{filename}");
     let file = File::open(filename).unwrap();
     for line in io::BufReader::new(file).lines() {
         let line = line.unwrap();
         let mut board = Board::from_line(&line[..]);
+        if dump {
+            board.dump();
+        }
         println!("=========================\nsolving:\n");
         board.print();
         let solved = board.solve();
